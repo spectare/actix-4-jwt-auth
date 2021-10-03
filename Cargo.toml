@@ -1,0 +1,25 @@
+[package]
+name = "actix-4-jwt-auth"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-rt = "2.2.0"
+actix-service = "2.0.0-beta.5"
+actix-web = "4.0.0-beta.9"
+alcoholic_jwt = "1.0.1"
+bytes = "1.1.0"
+derive_more = "0.99.16"
+env_logger = "0.9.0"
+futures = "0.3.15"
+futures-core = {version = "0.3.7", default-features = false, features = ["alloc"]}
+futures-util = {version = "0.3.7", default-features = false, features = ["alloc"]}
+log = "0.4.11"
+reqwest = {version = "0.11.4", features = ["json", "blocking"]}
+sanitize-filename = "0.3"
+serde = {version = "1", features = ["derive"]}
+serde_json = "1"
+thiserror = "1.0.29"
+tokio = {version = "1.6.0", features = ["full"]}
