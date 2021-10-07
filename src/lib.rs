@@ -1,12 +1,8 @@
 use actix_web::http::StatusCode;
 use actix_web::ResponseError;
-// use alcoholic_jwt::{token_kid, validate, ValidJWT, Validation, ValidationError, JWKS};
 use biscuit::errors::Error as BiscuitError;
-// use biscuit::errors::ValidationError;
-// use biscuit::jwa::SignatureAlgorithm;
-use biscuit::jwk::JWKSet;
-// use biscuit::{ClaimsSet, Empty, RegisteredClaims, JWT};
 use biscuit::jwa::*;
+use biscuit::jwk::JWKSet;
 use biscuit::jws::*;
 use biscuit::*;
 use reqwest;
@@ -36,12 +32,6 @@ pub enum OIDCValidationError {
     #[error("No token found or token is not authorized")]
     Unauthorized,
 }
-
-// impl From<alcoholic_jwt::ValidationError> for OIDCValidationError {
-//     fn from(e: alcoholic_jwt::ValidationError) -> Self {
-//         OIDCValidationError::InvalidBearerAuth(e)
-//     }
-// }
 
 impl From<biscuit::errors::Error> for OIDCValidationError {
     fn from(e: biscuit::errors::Error) -> Self {

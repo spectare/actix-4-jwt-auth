@@ -1,18 +1,22 @@
-use super::OIDCDiscoveryDocument;
 use super::OIDCValidationError;
 use super::OIDCValidator;
 use actix_web::dev::{MessageBody, Service, Transform};
 use actix_web::dev::{ServiceRequest, ServiceResponse};
-use actix_web::{Error};
-use alcoholic_jwt::{token_kid, validate, ValidJWT, Validation, ValidationError, JWKS};
+use actix_web::Error;
+use biscuit::errors::Error as BiscuitError;
+use biscuit::jwa::*;
+use biscuit::jwk::JWKSet;
+use biscuit::jws::*;
+use biscuit::*;
+use serde_json::Value;
 use std::future::{ready, Future, Ready};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 pub struct JwtValidationHandler<S> {
     service: S,
-    jwks: JWKS,
-    discovery_document: OIDCDiscoveryDocument,
+    jwks: JWKSet<Empty>,
+    issuer: String,
 }
 
 impl<S, B> Transform<S, ServiceRequest> for OIDCValidator
@@ -32,26 +36,19 @@ where
         ready(Ok(JwtValidationHandler {
             service,
             jwks: self.jwks.clone(),
-            discovery_document: self.discovery_document.clone(),
+            issuer: self.issuer.clone(),
         }))
     }
 }
 
 impl<S> JwtValidationHandler<S> {
-    fn validate_token(&self, token: &str) -> Result<ValidJWT, ValidationError> {
-        let validations = vec![
-            Validation::Issuer(self.discovery_document.issuer.clone()),
-            Validation::SubjectPresent,
-        ];
-        let kid = match token_kid(&token) {
-            Ok(res) => res.expect("failed to decode kid"),
-            Err(_) => return Err(ValidationError::InvalidJWK),
-        };
-        let jwk = self
-            .jwks
-            .find(&kid)
-            .expect("Specified key not found in set");
-        validate(token, jwk, validations)
+    pub fn validate_token(&self, token: &str) -> Result<Value, BiscuitError> {
+        let token: biscuit::jws::Compact<biscuit::ClaimsSet<Empty>, RegisteredClaims> =
+            JWT::new_encoded(&token);
+        let decoded_token = token.decode_with_jwks(&self.jwks, Some(SignatureAlgorithm::RS256))?;
+        let claims = decoded_token.payload().unwrap();
+        let json_value = serde_json::to_value(claims).unwrap();
+        Ok(json_value)
     }
 }
 
