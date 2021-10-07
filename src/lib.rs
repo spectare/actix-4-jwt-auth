@@ -1,13 +1,19 @@
 use actix_web::http::StatusCode;
 use actix_web::ResponseError;
-use alcoholic_jwt::{token_kid, validate, ValidJWT, Validation, ValidationError, JWKS};
+use biscuit::errors::Error as BiscuitError;
+use biscuit::jwa::*;
+use biscuit::jwk::JWKSet;
+use biscuit::jws::*;
+use biscuit::*;
 use reqwest;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::format;
 use thiserror::Error;
 
 mod extractor;
 mod middleware;
+
+pub use extractor::{AuthenticatedUser, OIDCValidatorConfig};
 
 #[derive(Error, Debug)]
 pub enum OIDCValidationError {
@@ -18,7 +24,7 @@ pub enum OIDCValidationError {
     FailedToLoadDiscovery(reqwest::Error),
 
     #[error("Bearer authentication token invalid: {0:?}")]
-    InvalidBearerAuth(ValidationError),
+    InvalidBearerAuth(BiscuitError),
 
     #[error("Token on bearer header is not found")]
     BearerNotComplete,
@@ -27,8 +33,8 @@ pub enum OIDCValidationError {
     Unauthorized,
 }
 
-impl From<alcoholic_jwt::ValidationError> for OIDCValidationError {
-    fn from(e: alcoholic_jwt::ValidationError) -> Self {
+impl From<biscuit::errors::Error> for OIDCValidationError {
+    fn from(e: biscuit::errors::Error) -> Self {
         OIDCValidationError::InvalidBearerAuth(e)
     }
 }
@@ -54,8 +60,8 @@ struct OIDCDiscoveryDocument {
 #[derive(Clone, Debug)]
 pub struct OIDCValidator {
     //note that keys may expire based on Cache-Control: max-age=21446, must-revalidate header
-    jwks: JWKS,
-    discovery_document: OIDCDiscoveryDocument,
+    jwks: JWKSet<Empty>,
+    issuer: String,
 }
 
 impl OIDCValidator {
@@ -69,25 +75,19 @@ impl OIDCValidator {
             .map_err(|e| OIDCValidationError::FailedToLoadKeystore(e))?;
 
         Ok(OIDCValidator {
-            jwks,
-            discovery_document: discovery_document.clone(),
+            jwks: jwks,
+            issuer: issuer_url.clone(),
         })
     }
 
-    pub fn validate_token(&self, token: &str) -> Result<ValidJWT, ValidationError> {
-        let validations = vec![
-            Validation::Issuer(self.discovery_document.issuer.clone()),
-            Validation::SubjectPresent,
-        ];
-        let kid = match token_kid(&token) {
-            Ok(res) => res.expect("failed to decode kid"),
-            Err(_) => return Err(ValidationError::InvalidJWK),
-        };
-        let jwk = self
-            .jwks
-            .find(&kid)
-            .expect("Specified key not found in set");
-        validate(token, jwk, validations)
+    pub fn validate_token(&self, token: &str) -> Result<AuthenticatedUser, BiscuitError> {
+        let token: biscuit::jws::Compact<biscuit::ClaimsSet<AuthenticatedUser>, RegisteredClaims> =
+            JWT::new_encoded(&token);
+        let decoded_token = token.decode_with_jwks(&self.jwks, Some(SignatureAlgorithm::RS256))?;
+        let claims = decoded_token.payload().unwrap();
+        let json_value = serde_json::to_value(claims).unwrap();
+        let authenticated_user: AuthenticatedUser = serde_json::from_value(json_value).unwrap();
+        Ok(authenticated_user)
     }
 }
 
@@ -97,9 +97,9 @@ fn fetch_discovery(uri: &str) -> Result<OIDCDiscoveryDocument, reqwest::Error> {
     return Ok(val);
 }
 
-fn fetch_jwks(uri: &str) -> Result<JWKS, reqwest::Error> {
+fn fetch_jwks(uri: &str) -> Result<JWKSet<Empty>, reqwest::Error> {
     let res = reqwest::blocking::get(uri)?;
-    let val: JWKS = res.json::<JWKS>()?;
+    let val: JWKSet<Empty> = res.json::<JWKSet<Empty>>()?;
     return Ok(val);
 }
 
@@ -109,7 +109,7 @@ mod tests {
     use log::debug;
     use tokio::task;
 
-    const TEST_ISSUER: &str = "http://localhost:5556/dex";
+    const TEST_ISSUER: &str = "https://accounts.google.com";
 
     #[actix_rt::test]
     async fn test_jwks_url() {
