@@ -3,8 +3,18 @@
 Works with extractors 
 
 ```rust
-    async fn authenticated_user(user: AuthenticatedUser) -> String {
-        format!("Welcome {}!", user.name)
+    #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+    pub struct FoundClaims {
+        pub iss: String,
+        pub sub: String,
+        pub aud: String,
+        pub name: String,
+        pub email: Option<String>,
+        pub email_verified: Option<bool>,
+    }
+
+    async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
+        format!("Welcome {}!", user.claims.name)
     }
 ```
 
