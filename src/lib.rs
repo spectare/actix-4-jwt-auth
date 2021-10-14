@@ -2,35 +2,43 @@
 //!
 //! # Examples
 //! ```no_run
-//!     #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-//!     pub struct FoundClaims {
-//!         pub iss: String,
-//!         pub sub: String,
-//!         pub aud: String,
-//!         pub name: String,
-//!         pub email: Option<String>,
-//!         pub email_verified: Option<bool>,
-//!     }
-//!     
-//!     async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
-//!         format!("Welcome {}!", user.claims.name)
-//!     }
+//! use actix_4_jwt_auth::{AuthenticatedUser, OIDCValidator, OIDCValidatorConfig};
+//! use actix_web::{get, http::header, test, web, App, Error, HttpResponse, HttpServer};
+//! use serde::{Deserialize, Serialize};
 //!
-//!     let test_issuer = "https://accounts.google.com/".to_string();
+//! #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+//! pub struct FoundClaims {
+//!     pub iss: String,
+//!     pub sub: String,
+//!     pub aud: String,
+//!     pub name: String,
+//!     pub email: Option<String>,
+//!     pub email_verified: Option<bool>,
+//! }
+//!     
+//! #[get("/authenticated_user")]
+//! async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
+//!     format!("Welcome {}!", user.claims.name)
+//! }
+//!
+//! #[actix_rt::main]
+//! async fn main() -> std::io::Result<()> {
+//!     let test_issuer = "https://a.valid.openid-connect.idp/".to_string();
 //!     let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).unwrap();
-//!     OIDCValidatorConfig {
+//!     let validator_config = OIDCValidatorConfig {
 //!         issuer: test_issuer,
 //!         validator: created_validator,
-//!     }
+//!     };
 //!     
 //!     HttpServer::new(move || {
 //!       App::new()
 //!               .app_data(validator_config.clone())
-//!               .service(authenticated_user),
+//!               .service(authenticated_user)
 //!       })
 //!     .bind("0.0.0.0:8080".to_string())?
 //!     .run()
 //!     .await
+//! }
 //! ```
 //!
 //! Where the new_from_issuer will actually fetch the URL + ./well-known/oidc-configuration in order to find the
@@ -40,6 +48,7 @@
 //! In addition to this API documentation, several other resources are available:
 //!
 //! * [Source code and development guidelines](https://github.com/spectare/actix-4-jwt-auth)
+#![warn(missing_docs)]
 use actix_web::http::StatusCode;
 use actix_web::ResponseError;
 use biscuit::errors::Error as BiscuitError;
@@ -50,26 +59,33 @@ use reqwest;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use std::format;
+use std::sync::Arc;
 use thiserror::Error;
 
 mod extractor;
 
 pub use extractor::{AuthenticatedUser, OIDCValidatorConfig};
 
+/// When a JWT token is received and validated, it may be faulty due to different reasons
 #[derive(Error, Debug)]
 pub enum OIDCValidationError {
+    ///It was not possible to laod the keys used for validation of the signature
     #[error("Failed to load JWKS keystore from {0:?}")]
     FailedToLoadKeystore(reqwest::Error),
 
+    ///It was not possible to retrieve the openid-configuration document and get the jwks_uri
     #[error("Failed to load JWKS keystore from {0:?}")]
     FailedToLoadDiscovery(reqwest::Error),
 
+    ///The Bearer token passed is not valid
     #[error("Bearer authentication token invalid: {0:?}")]
     InvalidBearerAuth(BiscuitError),
 
+    ///The Bearer token passed is not found or faulty
     #[error("Token on bearer header is not found")]
     BearerNotComplete,
 
+    ///The validated token has been validated but is not valid for this situation.
     #[error("No token found or token is not authorized")]
     Unauthorized,
 }
@@ -98,10 +114,11 @@ struct OIDCDiscoveryDocument {
     jwks_uri: String,
 }
 
+/// The OIDCValidator contains the core functionality and needs to be available in order to validate JWT
 #[derive(Clone, Debug)]
 pub struct OIDCValidator {
     //note that keys may expire based on Cache-Control: max-age=21446, must-revalidate header
-    jwks: JWKSet<Empty>,
+    jwks: Arc<JWKSet<Empty>>,
     issuer: String,
 }
 
@@ -121,7 +138,7 @@ impl OIDCValidator {
             .map_err(|e| OIDCValidationError::FailedToLoadKeystore(e))?;
 
         Ok(OIDCValidator {
-            jwks: jwks,
+            jwks: Arc::new(jwks),
             issuer: issuer_url.clone(),
         })
     }

@@ -5,30 +5,15 @@ use futures_util::future::{ok, ready, Ready};
 use log::error;
 use serde::{Deserialize, Serialize};
 
-///The config may be used to create your OIDCValidator programatically:
-/// ```
-/// let test_issuer = "https://accounts.google.com/".to_string();
-/// let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).unwrap();
-/// OIDCValidatorConfig {
-///     issuer: test_issuer,
-///     validator: created_validator,
-/// }
-///
-/// HttpServer::new(move || {
-///   App::new()
-///           .app_data(validator_config.clone())
-///           .service(authenticated_user),
-///   })
-/// .bind("0.0.0.0:8080".to_string())?
-/// .run()
-/// .await
-/// ```
+///The config may be used to create your OIDCValidator programatically
 /// When you do not add the app_data with your own config, a default will look for an
 /// environment variable named OIDC_ISSUER and use that as base URL to fetch the
 /// openid-configuration.
 #[derive(Clone)]
 pub struct OIDCValidatorConfig {
+    ///URL of the issuer as String
     pub issuer: String,
+    /// Configured [`OIDCValidator`]
     pub validator: OIDCValidator,
 }
 
@@ -48,19 +33,6 @@ impl Default for OIDCValidatorConfig {
 }
 
 /// AuthenticatedUser with your given Claims struct will be extracted data to use in your functions.
-/// ```
-/// #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-/// pub struct FoundClaims {
-///    pub iss: String,
-///     pub sub: String,
-///     pub aud: String,
-///     pub name: String,
-///     pub email: Option<String>,
-///     pub email_verified: Option<bool>,
-///   }
-///
-/// async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String { }
-/// ```
 /// The struct may contain registered claims, these are validated according to
 /// [RFC 7519](https://www.rfc-editor.org/rfc/rfc7519.html#section-4.1)
 ///

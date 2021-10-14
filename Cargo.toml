@@ -20,7 +20,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 actix-rt = "2.2.0"
 actix-service = "2.0.0-beta.5"
 actix-web = "4.0.0-beta.9"
-biscuit = {git = "https://github.com/lawliet89/biscuit", branch = "master"}
+biscuit = "0.6.0-beta1"
 bytes = "1.1.0"
 derive_more = "0.99.16"
 env_logger = "0.9.0"
