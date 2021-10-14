@@ -1,6 +1,6 @@
 # Actix 4 compatible JWT authentication
 
-Works with extraxtors 
+Works with extractors 
 
 ```rust
     async fn authenticated_user(user: AuthenticatedUser) -> String {

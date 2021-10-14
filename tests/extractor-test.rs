@@ -2,13 +2,25 @@
 use actix_4_jwt_auth::{AuthenticatedUser, OIDCValidator, OIDCValidatorConfig};
 use actix_web::{get, http::header, test, App, Error};
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::task;
 mod common;
 
+// Create a struct that will deserialize your claims.
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct FoundClaims {
+  pub iss: String,
+  pub sub: String,
+  pub aud: String,
+  pub name: String,
+  pub email: Option<String>,
+  pub email_verified: Option<bool>,
+}
+
 #[get("/authenticated_user")]
-async fn authenticated_user(user: AuthenticatedUser) -> String {
-  format!("Welcome {}!", user.name)
+async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
+  format!("Welcome {}!", user.claims.name)
 }
 
 #[actix_rt::test]
@@ -33,7 +45,7 @@ async fn test_jwt_auth_ok() -> Result<(), Error> {
       .service(authenticated_user),
   )
   .await;
-  //let my_token = "eyJhbGciOiJSUzI1NiIsImtpZCI6ImMzYjA3NjNiYjc1ZTliYzU4MzY1NTJlMmY5ZDljMTI0ZmJjNzFkYzEifQ.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjU1NTYvZGV4Iiwic3ViIjoiQ2dSc1lXNWhFZ1ZzYjJOaGJBIiwiYXVkIjoidG90aGVwb2ludCIsImV4cCI6MTYzMzA5MjY0NSwiaWF0IjoxNjMzMDA2MjQ1LCJub25jZSI6IjM0Y2IzY2VhM2I3ZjRmNWFiNzQ2NjY0N2VlNzQwNmYxIiwiYXRfaGFzaCI6IjM5QzVvTkNJN1l3UFV5VHE2MkN5ekEiLCJuYW1lIjoiTGFuYSBkZWwgUmV5In0.VccekTmXT8s-iKwwuW4ikhy-CM-Pr2yFCVgVXOYDNr09srylmSjaO7njL8gC7C-RLYj74oXRG2SRbwWxxTztUFWF__IfRj0-pna8_tunm_p4srbJRPiF_fL4E_3iczdcIKTF_am6qtN9yms2Sm0qUV_RD6WkqfvqMfNUUzp98GLJ6gsDEam84rWCnv_vY6YKXVcnpqB8Hwlr8hT7ZMtYGdrc5pb_rHyvFavSIpeLfqgPTKnboTgMsSu8dS13Pk3xh6rOWJkggF780VDrH58Nwjn0oqU8ay3pc1MVfMqUcnzphdqbCLjMLePWkNbEe0ZdVPxGlvY7aBvtCSye6UejfQ".to_string();
+
   let claims = json!({
     "iss": "http://0.0.0.0:9090",
     "sub": "CgVhZG1pbhIFbG9jYWw",

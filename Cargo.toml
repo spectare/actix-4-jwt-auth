@@ -22,6 +22,7 @@ log = "0.4.11"
 reqwest = {version = "0.11.4", features = ["json", "blocking"]}
 sanitize-filename = "0.3"
 serde = {version = "1", features = ["derive"]}
+serde_derive = "1"
 serde_json = "1"
 thiserror = "1.0.29"
 tokio = {version = "1.6.0", features = ["full"]}

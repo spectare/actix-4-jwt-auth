@@ -6,7 +6,8 @@ use biscuit::jwk::JWKSet;
 use biscuit::jws::*;
 use biscuit::*;
 use reqwest;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
+use serde_json::Value;
 use std::format;
 use thiserror::Error;
 
@@ -80,13 +81,16 @@ impl OIDCValidator {
         })
     }
 
-    pub fn validate_token(&self, token: &str) -> Result<AuthenticatedUser, BiscuitError> {
-        let token: biscuit::jws::Compact<biscuit::ClaimsSet<AuthenticatedUser>, RegisteredClaims> =
+    pub fn validate_token<T: for<'de> serde::Deserialize<'de>>(
+        &self,
+        token: &str,
+    ) -> Result<T, BiscuitError> {
+        let token: biscuit::jws::Compact<biscuit::ClaimsSet<Value>, Empty> =
             JWT::new_encoded(&token);
         let decoded_token = token.decode_with_jwks(&self.jwks, Some(SignatureAlgorithm::RS256))?;
-        let claims = decoded_token.payload().unwrap();
-        let json_value = serde_json::to_value(claims).unwrap();
-        let authenticated_user: AuthenticatedUser = serde_json::from_value(json_value).unwrap();
+        let claims_set = decoded_token.payload().unwrap();
+        let json_value = serde_json::to_value(claims_set).unwrap();
+        let authenticated_user: T = serde_json::from_value(json_value).unwrap();
         Ok(authenticated_user)
     }
 }
