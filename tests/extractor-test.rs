@@ -23,6 +23,7 @@ async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
   format!("Welcome {}!", user.claims.name)
 }
 
+///Test of the Extractor using 
 #[actix_rt::test]
 async fn test_jwt_auth_ok() -> Result<(), Error> {
   let test_issuer = "http://0.0.0.0:9090".to_string();

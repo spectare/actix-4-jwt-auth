@@ -1,9 +1,50 @@
+//! Actix 4 JWT Auth is a OIDC based authentication mechanism.
+//!
+//! # Examples
+//! ```no_run
+//!     #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+//!     pub struct FoundClaims {
+//!         pub iss: String,
+//!         pub sub: String,
+//!         pub aud: String,
+//!         pub name: String,
+//!         pub email: Option<String>,
+//!         pub email_verified: Option<bool>,
+//!     }
+//!     
+//!     async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
+//!         format!("Welcome {}!", user.claims.name)
+//!     }
+//!
+//!     let test_issuer = "https://accounts.google.com/".to_string();
+//!     let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).unwrap();
+//!     OIDCValidatorConfig {
+//!         issuer: test_issuer,
+//!         validator: created_validator,
+//!     }
+//!     
+//!     HttpServer::new(move || {
+//!       App::new()
+//!               .app_data(validator_config.clone())
+//!               .service(authenticated_user),
+//!       })
+//!     .bind("0.0.0.0:8080".to_string())?
+//!     .run()
+//!     .await
+//! ```
+//!
+//! Where the new_from_issuer will actually fetch the URL + ./well-known/oidc-configuration in order to find the
+//! location of the published keys.
+//!
+//! # More documentation
+//! In addition to this API documentation, several other resources are available:
+//!
+//! * [Source code and development guidelines](https://github.com/spectare/actix-4-jwt-auth)
 use actix_web::http::StatusCode;
 use actix_web::ResponseError;
 use biscuit::errors::Error as BiscuitError;
 use biscuit::jwa::*;
 use biscuit::jwk::JWKSet;
-use biscuit::jws::*;
 use biscuit::*;
 use reqwest;
 use serde_derive::{Deserialize, Serialize};
@@ -12,7 +53,6 @@ use std::format;
 use thiserror::Error;
 
 mod extractor;
-mod middleware;
 
 pub use extractor::{AuthenticatedUser, OIDCValidatorConfig};
 
@@ -66,6 +106,11 @@ pub struct OIDCValidator {
 }
 
 impl OIDCValidator {
+    /// Creates a new OIDC Validator based on the base URL of the OIDC Identity Provider (IdP)
+    ///
+    /// The given issuer_url will be extended with ./well-known/openid-configuration in order to
+    /// fetch the configuration and use the jwks_uri property to retrieve the keys used for validation.
+    ///
     pub fn new_from_issuer(issuer_url: String) -> Result<Self, OIDCValidationError> {
         let discovery_document = fetch_discovery(&format!(
             "{}/.well-known/openid-configuration",
@@ -81,6 +126,9 @@ impl OIDCValidator {
         })
     }
 
+    /// Validates the token. This is the complete String without the Bearer part inside the header.
+    /// This will return a complete validated claimset that contains all the claims found inside the token
+    /// as Serde Json Value.
     pub fn validate_token<T: for<'de> serde::Deserialize<'de>>(
         &self,
         token: &str,
@@ -122,9 +170,7 @@ mod tests {
         })
         .await;
         assert!(res.is_ok());
-        let validator = res.expect("Cannot retrieve");
-        //assert_eq!(validator.discovery_document.jwks_uri, TEST_KEYSET)
-        //assert!(key_url == "bla");
+        let _validator = res.expect("Cannot retrieve");
     }
 
     #[actix_rt::test]

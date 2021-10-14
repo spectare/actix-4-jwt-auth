@@ -1,5 +1,15 @@
 # Actix 4 compatible JWT authentication
 
+In order to make use of this crate, you can add it to your Cargo.toml
+
+```
+actix-4-jwt-auth = "0.1.0"
+```
+Or when you like to use the latest as found on github:
+```
+actix-4-jwt-auth = {git = "https://github.com/spectare/actix-4-jwt-auth", branch = "main"}
+```
+
 Works with extractors 
 
 ```rust
@@ -40,6 +50,20 @@ You can wire your application like
       .await
 ```
 
+More documentation is found on doc.rs 
+
 # Development of this crate
 
 In order to run the integration tests, it is neccesary to run a service that mocks OIDC requests. 
+
+```sh
+docker run -p9090:9090 -e BIND=0.0.0.0 -e PORT=9090 spectare/oidc-token-test-service:latest
+```
+
+This service published a keyset with the openid-configuration and allows you to translate *any* claimset
+into a JWT token to be used in your tests. (So that may be valid, faulty or invalid)
+
+```sh
+cargo test
+```
+Thereafter will call the service to test various types of JWT tokens. 

@@ -1,11 +1,20 @@
 [package]
-author = "Olger Warnier <olger@spectare.nl>"
+authors = ["Olger Warnier <olger@spectare.nl>"]
+categories = [
+  "network-programming",
+  "asynchronous",
+  "web-programming::http-server",
+]
+description = "OIDC authentication extractor for Actix 4"
 edition = "2018"
+keywords = ["actix", "http", "web", "cryptography"]
 license = "MIT"
 name = "actix-4-jwt-auth"
+repository = "https://github.com/spectare/actix-4-jwt-auth"
 version = "0.1.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 actix-rt = "2.2.0"
