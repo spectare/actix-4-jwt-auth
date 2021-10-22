@@ -19,6 +19,7 @@
         - run:
             name: Stable Build
             command: |
+              cargo version
               cargo build
         - run:
             name: Test
