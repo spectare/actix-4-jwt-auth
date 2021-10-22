@@ -2,7 +2,7 @@
   jobs:
     build:
       docker:
-        - image: cimg/rust:1.54.0
+        - image: spectare/rust-build:latest
 
       environment:
         # Set your codecov token if your repository is private.
