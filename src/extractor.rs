@@ -46,7 +46,6 @@ pub struct AuthenticatedUser<T> {
 }
 
 impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
-    type Config = OIDCValidatorConfig;
     type Error = Error;
     type Future = Ready<Result<Self, Self::Error>>;
 
