@@ -153,6 +153,9 @@ impl OIDCValidator {
         let token: biscuit::jws::Compact<biscuit::ClaimsSet<Value>, Empty> =
             JWT::new_encoded(&token);
         let decoded_token = token.decode_with_jwks(&self.jwks, Some(SignatureAlgorithm::RS256))?;
+        //Validate the token based on default settings.
+        let validation_options = ValidationOptions::default();
+        decoded_token.validate(validation_options).unwrap();
         let claims_set = decoded_token.payload().unwrap();
         let json_value = serde_json::to_value(claims_set).unwrap();
         let authenticated_user: T = serde_json::from_value(json_value).unwrap();

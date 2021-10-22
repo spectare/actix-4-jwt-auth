@@ -23,6 +23,7 @@ Works with extractors
         pub email_verified: Option<bool>,
     }
 
+    #[get("/authenticated_user")]
     async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
         format!("Welcome {}!", user.claims.name)
     }

@@ -3,8 +3,10 @@ use reqwest;
 use serde_json::Value;
 use std::format;
 
+//Expecting the spectare/oidc-token-test-service:latest running bound to port given in the issuer string
+//like http://localhost:8080
 pub async fn check_test_idp(issuer: String) -> Result<bool, String> {
-  reqwest::get(issuer)
+  reqwest::get(format!("{}/health", issuer))
     .map_err(|e| e.to_string())
     .await
     .map(|r| r.status() == 200)
