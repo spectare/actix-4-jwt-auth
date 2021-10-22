@@ -1,6 +1,6 @@
 #[cfg(test)]
 use actix_4_jwt_auth::{AuthenticatedUser, OIDCValidator, OIDCValidatorConfig};
-use actix_web::dev::{Service, ServiceRequest, ServiceResponse};
+use actix_web::dev::Service;
 use actix_web::{get, http, http::header, test, App, Error};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
