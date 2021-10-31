@@ -26,7 +26,7 @@ impl Default for OIDCValidatorConfig {
             .unwrap();
         let created_validator = OIDCValidator::new_from_issuer(oidc_issuer.clone()).unwrap();
         OIDCValidatorConfig {
-            issuer: oidc_issuer.clone(),
+            issuer: oidc_issuer,
             validator: created_validator,
         }
     }
@@ -60,7 +60,7 @@ impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
             Some(value) => {
                 let value_str = value.to_str().unwrap().to_string();
                 match value_str.strip_prefix("Bearer ") {
-                    Some(token) => match cfg.validator.validate_token(&token) {
+                    Some(token) => match cfg.validator.validate_token(token) {
                         Ok(valid_claims) => ok(AuthenticatedUser {
                             jwt: token.to_string(),
                             claims: valid_claims,

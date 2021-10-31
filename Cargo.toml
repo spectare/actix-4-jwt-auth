@@ -6,7 +6,7 @@ categories = [
   "web-programming::http-server",
 ]
 description = "OIDC authentication extractor for Actix 4"
-edition = "2018"
+edition = "2021"
 keywords = ["actix", "http", "web", "cryptography"]
 license = "MIT"
 name = "actix-4-jwt-auth"

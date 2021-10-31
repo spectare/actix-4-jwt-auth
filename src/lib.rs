@@ -55,7 +55,6 @@ use biscuit::errors::Error as BiscuitError;
 use biscuit::jwa::*;
 use biscuit::jwk::JWKSet;
 use biscuit::*;
-use reqwest;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use std::format;
@@ -133,13 +132,13 @@ impl OIDCValidator {
             "{}/.well-known/openid-configuration",
             issuer_url.as_str()
         ))
-        .map_err(|e| OIDCValidationError::FailedToLoadDiscovery(e))?;
+        .map_err(OIDCValidationError::FailedToLoadDiscovery)?;
         let jwks = fetch_jwks(&discovery_document.jwks_uri)
-            .map_err(|e| OIDCValidationError::FailedToLoadKeystore(e))?;
+            .map_err(OIDCValidationError::FailedToLoadKeystore)?;
 
         Ok(OIDCValidator {
             jwks: Arc::new(jwks),
-            issuer: issuer_url.clone(),
+            issuer: issuer_url,
         })
     }
 
@@ -151,7 +150,7 @@ impl OIDCValidator {
         token: &str,
     ) -> Result<T, BiscuitError> {
         let token: biscuit::jws::Compact<biscuit::ClaimsSet<Value>, Empty> =
-            JWT::new_encoded(&token);
+            JWT::new_encoded(token);
         let decoded_token = token.decode_with_jwks(&self.jwks, Some(SignatureAlgorithm::RS256))?;
         //Validate the token based on default settings.
         let validation_options = ValidationOptions::default();
@@ -166,13 +165,13 @@ impl OIDCValidator {
 fn fetch_discovery(uri: &str) -> Result<OIDCDiscoveryDocument, reqwest::Error> {
     let res = reqwest::blocking::get(uri)?;
     let val: OIDCDiscoveryDocument = res.json::<OIDCDiscoveryDocument>()?;
-    return Ok(val);
+    Ok(val)
 }
 
 fn fetch_jwks(uri: &str) -> Result<JWKSet<Empty>, reqwest::Error> {
     let res = reqwest::blocking::get(uri)?;
     let val: JWKSet<Empty> = res.json::<JWKSet<Empty>>()?;
-    return Ok(val);
+    Ok(val)
 }
 
 #[cfg(test)]
