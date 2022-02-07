@@ -117,28 +117,32 @@ struct OIDCDiscoveryDocument {
 #[derive(Clone, Debug)]
 pub struct OIDCValidator {
     //note that keys may expire based on Cache-Control: max-age=21446, must-revalidate header
+    /// Contains the JWK Keys that belong to the issuer
     jwks: Arc<JWKSet<Empty>>,
-    issuer: String,
 }
 
 impl OIDCValidator {
     /// Creates a new OIDC Validator based on the base URL of the OIDC Identity Provider (IdP)
     ///
     /// The given issuer_url will be extended with ./well-known/openid-configuration in order to
-    /// fetch the configuration and use the jwks_uri property to retrieve the keys used for validation.
-    ///
+    /// fetch the configuration and use the jwks_uri property to retrieve the keys used for validation.actix_rt    
     pub fn new_from_issuer(issuer_url: String) -> Result<Self, OIDCValidationError> {
-        let discovery_document = fetch_discovery(&format!(
+        let discovery_document = OIDCValidator::fetch_discovery(&format!(
             "{}/.well-known/openid-configuration",
             issuer_url.as_str()
         ))
         .map_err(OIDCValidationError::FailedToLoadDiscovery)?;
-        let jwks = fetch_jwks(&discovery_document.jwks_uri)
-            .map_err(OIDCValidationError::FailedToLoadKeystore)?;
+
+        OIDCValidator::new_with_keys(discovery_document.jwks_uri)
+    }
+
+    /// When you need the validator created with a specifix key URL 
+    pub fn new_with_keys(key_url: String) -> Result<Self, OIDCValidationError> {
+        let jwks = OIDCValidator::fetch_jwks(&key_url)
+        .map_err(OIDCValidationError::FailedToLoadKeystore)?;
 
         Ok(OIDCValidator {
             jwks: Arc::new(jwks),
-            issuer: issuer_url,
         })
     }
 
@@ -160,19 +164,22 @@ impl OIDCValidator {
         let authenticated_user: T = serde_json::from_value(json_value).unwrap();
         Ok(authenticated_user)
     }
+
+    fn fetch_discovery(uri: &str) -> Result<OIDCDiscoveryDocument, reqwest::Error> {
+        let res = reqwest::blocking::get(uri)?;
+        let val: OIDCDiscoveryDocument = res.json::<OIDCDiscoveryDocument>()?;
+        Ok(val)
+    }
+    
+    fn fetch_jwks(uri: &str) -> Result<JWKSet<Empty>, reqwest::Error> {
+        //let fetch_uri = match self.
+        let res = reqwest::blocking::get(uri)?;
+        let val: JWKSet<Empty> = res.json::<JWKSet<Empty>>()?;
+        Ok(val)
+    }
+    
 }
 
-fn fetch_discovery(uri: &str) -> Result<OIDCDiscoveryDocument, reqwest::Error> {
-    let res = reqwest::blocking::get(uri)?;
-    let val: OIDCDiscoveryDocument = res.json::<OIDCDiscoveryDocument>()?;
-    Ok(val)
-}
-
-fn fetch_jwks(uri: &str) -> Result<JWKSet<Empty>, reqwest::Error> {
-    let res = reqwest::blocking::get(uri)?;
-    let val: JWKSet<Empty> = res.json::<JWKSet<Empty>>()?;
-    Ok(val)
-}
 
 #[cfg(test)]
 mod tests {

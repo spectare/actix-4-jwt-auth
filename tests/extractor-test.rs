@@ -72,7 +72,7 @@ async fn test_jwt_auth_ok() -> Result<(), Error> {
         .to_request();
     //let resp = app.call(req).await.unwrap();
     //assert_eq!(resp.status(), http::StatusCode::OK);
-    let resp: Bytes = test::read_response(&app, req).await;
+    let resp: Bytes = test::call_and_read_body(&app, req).await;
 
     assert_eq!(resp, Bytes::from_static(b"Welcome admin!"));
     Ok(())

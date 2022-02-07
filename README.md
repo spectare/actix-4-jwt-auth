@@ -60,7 +60,7 @@ More documentation is found on doc.rs
 In order to run the integration tests, it is neccesary to run a service that mocks OIDC requests. 
 
 ```sh
-docker run -p9090:9090 -e BIND=0.0.0.0 -e PORT=9090 spectare/oidc-token-test-service:latest
+docker run -p8080:8080 -e BIND=0.0.0.0  spectare/oidc-token-test-service:latest 
 ```
 
 This service published a keyset with the openid-configuration and allows you to translate *any* claimset
