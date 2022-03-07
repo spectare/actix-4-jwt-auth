@@ -11,7 +11,7 @@ keywords = ["actix", "http", "web", "cryptography"]
 license = "MIT"
 name = "actix-4-jwt-auth"
 repository = "https://github.com/spectare/actix-4-jwt-auth"
-version = "0.4.1"
+version = "0.4.2"
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs"]
@@ -19,7 +19,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 actix-rt = "2.6.0"
 actix-service = "2.0.2"
-actix-web = "4.0.0-rc.2"
+actix-web = "4.0.1"
 biscuit = "0.6.0-beta1"
 bytes = "1.1.0"
 derive_more = "0.99.17"
