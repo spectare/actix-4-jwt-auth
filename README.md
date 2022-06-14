@@ -55,7 +55,7 @@ You can wire your application like
       .await
 ```
 
-More documentation is found on doc.rs
+More documentation is found on [docs.rs](https://docs.rs/actix-4-jwt-auth/0.4.2/actix_4_jwt_auth/)
 
 # Development of this crate
 
