@@ -49,6 +49,8 @@
 //!
 //! * [Source code and development guidelines](https://github.com/spectare/actix-4-jwt-auth)
 #![warn(missing_docs)]
+
+use std::fmt::{Display, Formatter};
 use actix_web::http::StatusCode;
 use actix_web::ResponseError;
 use biscuit::errors::Error as BiscuitError;
@@ -136,11 +138,16 @@ impl OIDCValidator {
         OIDCValidator::new_with_keys(discovery_document.jwks_uri)
     }
 
-    /// When you need the validator created with a specifix key URL 
+    /// When you need the validator created with a specified key URL
     pub fn new_with_keys(key_url: String) -> Result<Self, OIDCValidationError> {
         let jwks = OIDCValidator::fetch_jwks(&key_url)
-        .map_err(OIDCValidationError::FailedToLoadKeystore)?;
+            .map_err(OIDCValidationError::FailedToLoadKeystore)?;
 
+        OIDCValidator::new_for_jwks(jwks)
+    }
+
+    /// Use your own JSWKSet directly
+    pub fn new_for_jwks(jwks: JWKSet<Empty>) -> Result<Self, OIDCValidationError> {
         Ok(OIDCValidator {
             jwks: Arc::new(jwks),
         })
