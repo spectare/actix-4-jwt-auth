@@ -2,7 +2,6 @@ use super::OIDCValidationError;
 use super::OIDCValidator;
 use actix_web::{dev, Error, FromRequest, HttpRequest};
 use futures_util::future::{ok, ready, Ready};
-use log::error;
 use serde::{Deserialize, Serialize};
 
 ///The config may be used to create your OIDCValidator programatically
@@ -17,20 +16,20 @@ pub struct OIDCValidatorConfig {
     pub validator: OIDCValidator,
 }
 
-impl Default for OIDCValidatorConfig {
-    fn default() -> Self {
-        let oidc_issuer = std::env::var("OIDC_ISSUER")
-            .map_err(|_e| {
-                error!("PLEASE set the OIDC_ISSUER ENV var like: https://accounts.google.com")
-            })
-            .unwrap();
-        let created_validator = OIDCValidator::new_from_issuer(oidc_issuer.clone()).unwrap();
-        OIDCValidatorConfig {
-            issuer: oidc_issuer,
-            validator: created_validator,
-        }
-    }
-}
+// impl Default for OIDCValidatorConfig {
+//     fn default() -> Self {
+//         let oidc_issuer = std::env::var("OIDC_ISSUER")
+//             .map_err(|_e| {
+//                 error!("PLEASE set the OIDC_ISSUER ENV var like: https://accounts.google.com")
+//             })
+//             .unwrap();
+//         let created_validator = OIDCValidator::new_from_issuer(oidc_issuer.clone()).await.unwrap();
+//         OIDCValidatorConfig {
+//             issuer: oidc_issuer,
+//             validator: created_validator,
+//         }
+//     }
+// }
 
 /// AuthenticatedUser with your given Claims struct will be extracted data to use in your functions.
 /// The struct may contain registered claims, these are validated according to
@@ -65,7 +64,7 @@ impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
                             jwt: token.to_string(),
                             claims: valid_claims,
                         }),
-                        Err(e) => ready(Err(OIDCValidationError::InvalidBearerAuth(e).into())),
+                        Err(e) => ready(Err(e.into())),
                     },
                     _ => ready(Err(OIDCValidationError::BearerNotComplete.into())),
                 }
