@@ -5,7 +5,7 @@ In order to make use of this crate, you can add it to your Cargo.toml
 This crate is build with actix-4.
 
 ```
-actix-4-jwt-auth = "0.4.4"
+actix-4-jwt-auth = "0.5.0"
 ```
 
 Or when you like to use the latest as found on github:
@@ -39,11 +39,11 @@ You can wire your application like
 
 ```rust
       let test_issuer = "https://accounts.google.com/".to_string();
-      let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).unwrap();
-      OIDCValidatorConfig {
+      let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).await.unwrap();
+      let validator_config = OIDCValidatorConfig {
           issuer: test_issuer,
           validator: created_validator,
-      }
+      };
 
       HttpServer::new(move || {
         App::new()
@@ -55,7 +55,7 @@ You can wire your application like
       .await
 ```
 
-More documentation is found on [docs.rs](https://docs.rs/actix-4-jwt-auth/0.4.2/actix_4_jwt_auth/)
+More documentation is found on [docs.rs](https://docs.rs/actix-4-jwt-auth/0.5.0/actix_4_jwt_auth/)
 
 # Development of this crate
 
