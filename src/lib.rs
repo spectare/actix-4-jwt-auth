@@ -24,7 +24,7 @@
 //! #[actix_rt::main]
 //! async fn main() -> std::io::Result<()> {
 //!     let test_issuer = "https://a.valid.openid-connect.idp/".to_string();
-//!     let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).unwrap();
+//!     let created_validator = OIDCValidator::new_from_issuer(test_issuer.to_string()).await.unwrap();
 //!     let validator_config = OIDCValidatorConfig {
 //!         issuer: test_issuer,
 //!         validator: created_validator,
@@ -50,9 +50,9 @@
 //! * [Source code and development guidelines](https://github.com/spectare/actix-4-jwt-auth)
 #![warn(missing_docs)]
 
-use std::fmt::{Display, Formatter};
 use actix_web::http::StatusCode;
 use actix_web::ResponseError;
+use awc::error::{JsonPayloadError, SendRequestError};
 use biscuit::errors::Error as BiscuitError;
 use biscuit::jwa::*;
 use biscuit::jwk::JWKSet;
@@ -61,6 +61,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
 use std::format;
 use std::sync::Arc;
+use futures_util::TryFutureExt;
 use thiserror::Error;
 
 mod extractor;
@@ -70,17 +71,13 @@ pub use extractor::{AuthenticatedUser, OIDCValidatorConfig};
 /// When a JWT token is received and validated, it may be faulty due to different reasons
 #[derive(Error, Debug)]
 pub enum OIDCValidationError {
-    ///It was not possible to laod the keys used for validation of the signature
-    #[error("Failed to load JWKS keystore from {0:?}")]
-    FailedToLoadKeystore(reqwest::Error),
-
-    ///It was not possible to retrieve the openid-configuration document and get the jwks_uri
-    #[error("Failed to load JWKS keystore from {0:?}")]
-    FailedToLoadDiscovery(reqwest::Error),
-
     ///The Bearer token passed is not valid
     #[error("Bearer authentication token invalid: {0:?}")]
-    InvalidBearerAuth(BiscuitError),
+    InvalidBearerAuth(awc::error::HttpError),
+
+    ///The token validation fails due to cryptographic issues
+    #[error("Crypto handling error: {0:?}")]
+    CryptoError(biscuit::errors::Error),
 
     ///The Bearer token passed is not found or faulty
     #[error("Token on bearer header is not found")]
@@ -89,22 +86,59 @@ pub enum OIDCValidationError {
     ///The validated token has been validated but is not valid for this situation.
     #[error("No token found or token is not authorized")]
     Unauthorized,
+
+    ///It was not possible to laod the keys used for validation of the signature
+    #[error("Failed to process JWKS json from {0:?}")]
+    FailedToParseJsonResponse(awc::error::JsonPayloadError),
+
+    ///It was not possible to fetch the JWKS uri
+    #[error("Failed to fetch JWKS keystore from {0:?}")]
+    FailedToLoadKeystore(awc::error::HttpError),
+
+    ///It was not possible to retrieve the openid-configuration document and get the jwks_uri
+    #[error("Failed to load JWKS keystore from {0:?}")]
+    FailedToLoadDiscovery(awc::error::HttpError),
+
+    ///Failed to fetch data from given URI
+    #[error("Cannot fetch {0:?}")]
+    ConnectivityError(SendRequestError),
+}
+
+impl From<awc::error::HttpError> for OIDCValidationError {
+    fn from(e: awc::error::HttpError) -> Self {
+        OIDCValidationError::InvalidBearerAuth(e)
+    }
+}
+
+impl From<awc::error::JsonPayloadError> for OIDCValidationError {
+    fn from(e: JsonPayloadError) -> Self {
+        OIDCValidationError::FailedToParseJsonResponse(e)
+    }
+}
+
+impl From<SendRequestError> for OIDCValidationError {
+    fn from(e: SendRequestError) -> Self {
+        OIDCValidationError::ConnectivityError(e)
+    }
 }
 
 impl From<biscuit::errors::Error> for OIDCValidationError {
-    fn from(e: biscuit::errors::Error) -> Self {
-        OIDCValidationError::InvalidBearerAuth(e)
+    fn from(e: BiscuitError) -> Self {
+        OIDCValidationError::CryptoError(e)
     }
 }
 
 impl ResponseError for OIDCValidationError {
     fn status_code(&self) -> StatusCode {
         match self {
-            OIDCValidationError::FailedToLoadKeystore(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            OIDCValidationError::FailedToLoadDiscovery(_) => StatusCode::INTERNAL_SERVER_ERROR,
             OIDCValidationError::InvalidBearerAuth(_) => StatusCode::UNAUTHORIZED,
             OIDCValidationError::BearerNotComplete => StatusCode::BAD_REQUEST,
+            OIDCValidationError::FailedToLoadKeystore(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            OIDCValidationError::FailedToLoadDiscovery(_) => StatusCode::INTERNAL_SERVER_ERROR,
             OIDCValidationError::Unauthorized => StatusCode::UNAUTHORIZED,
+            OIDCValidationError::FailedToParseJsonResponse(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            OIDCValidationError::ConnectivityError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            OIDCValidationError::CryptoError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -116,11 +150,12 @@ struct OIDCDiscoveryDocument {
 }
 
 /// The OIDCValidator contains the core functionality and needs to be available in order to validate JWT
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct OIDCValidator {
     //note that keys may expire based on Cache-Control: max-age=21446, must-revalidate header
     /// Contains the JWK Keys that belong to the issuer
     jwks: Arc<JWKSet<Empty>>,
+    //client: Arc<awc::Client>,
 }
 
 impl OIDCValidator {
@@ -128,26 +163,23 @@ impl OIDCValidator {
     ///
     /// The given issuer_url will be extended with ./well-known/openid-configuration in order to
     /// fetch the configuration and use the jwks_uri property to retrieve the keys used for validation.actix_rt    
-    pub fn new_from_issuer(issuer_url: String) -> Result<Self, OIDCValidationError> {
+    pub async fn new_from_issuer(issuer_url: String) -> Result<Self, OIDCValidationError> {
         let discovery_document = OIDCValidator::fetch_discovery(&format!(
             "{}/.well-known/openid-configuration",
             issuer_url.as_str()
         ))
-        .map_err(OIDCValidationError::FailedToLoadDiscovery)?;
-
-        OIDCValidator::new_with_keys(discovery_document.jwks_uri)
+        .await?;
+        OIDCValidator::new_with_keys(discovery_document.jwks_uri).await
     }
 
     /// When you need the validator created with a specified key URL
-    pub fn new_with_keys(key_url: String) -> Result<Self, OIDCValidationError> {
-        let jwks = OIDCValidator::fetch_jwks(&key_url)
-            .map_err(OIDCValidationError::FailedToLoadKeystore)?;
-
-        OIDCValidator::new_for_jwks(jwks)
+    pub async fn new_with_keys(key_url: String) -> Result<Self, OIDCValidationError> {
+        let jwks = OIDCValidator::fetch_jwks(&key_url).await?;
+        OIDCValidator::new_for_jwks(jwks).await
     }
 
     /// Use your own JSWKSet directly
-    pub fn new_for_jwks(jwks: JWKSet<Empty>) -> Result<Self, OIDCValidationError> {
+    pub async fn new_for_jwks(jwks: JWKSet<Empty>) -> Result<Self, OIDCValidationError> {
         Ok(OIDCValidator {
             jwks: Arc::new(jwks),
         })
@@ -159,7 +191,7 @@ impl OIDCValidator {
     pub fn validate_token<T: for<'de> serde::Deserialize<'de>>(
         &self,
         token: &str,
-    ) -> Result<T, BiscuitError> {
+    ) -> Result<T, OIDCValidationError> {
         let token: biscuit::jws::Compact<biscuit::ClaimsSet<Value>, Empty> =
             JWT::new_encoded(token);
         let decoded_token = token.decode_with_jwks(&self.jwks, Some(SignatureAlgorithm::RS256))?;
@@ -172,48 +204,39 @@ impl OIDCValidator {
         Ok(authenticated_user)
     }
 
-    fn fetch_discovery(uri: &str) -> Result<OIDCDiscoveryDocument, reqwest::Error> {
-        let res = reqwest::blocking::get(uri)?;
-        let val: OIDCDiscoveryDocument = res.json::<OIDCDiscoveryDocument>()?;
-        Ok(val)
+    async fn fetch_discovery(uri: &str) -> Result<OIDCDiscoveryDocument, OIDCValidationError> {
+        let client = awc::Client::default();
+        client.get(uri)
+            .send().await
+            .map(|mut res| res.json::<OIDCDiscoveryDocument>()
+                .map_err(|err| OIDCValidationError::FailedToParseJsonResponse(err)))?.await
     }
-    
-    fn fetch_jwks(uri: &str) -> Result<JWKSet<Empty>, reqwest::Error> {
-        //let fetch_uri = match self.
-        let res = reqwest::blocking::get(uri)?;
-        let val: JWKSet<Empty> = res.json::<JWKSet<Empty>>()?;
-        Ok(val)
-    }
-    
-}
 
+    async fn fetch_jwks(uri: &str) -> Result<JWKSet<Empty>, OIDCValidationError> {
+        let client = awc::Client::default();
+        let req = client.get(uri);
+        let mut res = req.send().await?;
+        let jwk_set: JWKSet<Empty> = res.json::<JWKSet<Empty>>().await?;
+        Ok(jwk_set)
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use log::debug;
-    use tokio::task;
 
     const TEST_ISSUER: &str = "https://accounts.google.com";
 
     #[actix_rt::test]
     async fn test_jwks_url() {
-        let res = task::spawn_blocking(move || {
-            OIDCValidator::new_from_issuer(String::from(TEST_ISSUER)).unwrap();
-        })
-        .await;
+        let res = OIDCValidator::new_from_issuer(String::from(TEST_ISSUER)).await;
         assert!(res.is_ok());
         let _validator = res.expect("Cannot retrieve");
     }
 
     #[actix_rt::test]
     async fn test_jwks_url_fail() {
-        let res = task::spawn_blocking(move || {
-            let _middleware =
-                OIDCValidator::new_from_issuer(String::from("https://invalid.url")).unwrap();
-            debug!("{:?}", _middleware);
-        })
-        .await;
+        let res = OIDCValidator::new_from_issuer(String::from("https://invalid.url")).await;
         assert!(res.is_err());
     }
 }

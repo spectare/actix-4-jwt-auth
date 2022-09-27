@@ -5,7 +5,6 @@ use actix_web::{get, http, http::header, test, App, Error};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::task;
 mod common;
 
 // Create a struct that will deserialize your claims.
@@ -32,15 +31,11 @@ async fn test_jwt_auth_ok() -> Result<(), Error> {
     //Check if spectare/oidc-token-test-service:latest is running on given test_issuer endpoint.
     assert_eq!(common::check_test_idp(test_issuer.clone()).await, Ok(true));
 
-    let validator_config = task::spawn_blocking(move || {
-        let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).unwrap();
-        OIDCValidatorConfig {
-            issuer: test_issuer,
-            validator: created_validator,
-        }
-    })
-    .await
-    .expect("Expected a valid validator config");
+    let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).await.unwrap();
+    let validator_config = OIDCValidatorConfig {
+        issuer: test_issuer,
+        validator: created_validator,
+    };
 
     let app = test::init_service(
         App::new()
@@ -100,15 +95,11 @@ async fn test_jwt_auth_expired() -> () {
     //Check if spectare/oidc-token-test-service:latest is running on given test_issuer endpoint.
     assert_eq!(common::check_test_idp(test_issuer.clone()).await, Ok(true));
 
-    let validator_config = task::spawn_blocking(move || {
-        let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).unwrap();
-        OIDCValidatorConfig {
-            issuer: test_issuer,
-            validator: created_validator,
-        }
-    })
-    .await
-    .expect("Expected a valid validator config");
+    let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).await.unwrap();
+    let validator_config = OIDCValidatorConfig {
+        issuer: test_issuer,
+        validator: created_validator,
+    };
 
     let app = test::init_service(
         App::new()
@@ -149,15 +140,12 @@ async fn test_jwt_auth_invisible_not_before() -> () {
     //Check if spectare/oidc-token-test-service:latest is running on given test_issuer endpoint.
     assert_eq!(common::check_test_idp(test_issuer.clone()).await, Ok(true));
 
-    let validator_config = task::spawn_blocking(move || {
-        let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).unwrap();
-        OIDCValidatorConfig {
-            issuer: test_issuer,
-            validator: created_validator,
-        }
-    })
-    .await
-    .expect("Expected a valid validator config");
+
+    let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).await.unwrap();
+    let validator_config = OIDCValidatorConfig {
+        issuer: test_issuer,
+        validator: created_validator,
+    };
 
     let app = test::init_service(
         App::new()
