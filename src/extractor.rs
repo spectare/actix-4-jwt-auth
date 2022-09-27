@@ -16,21 +16,6 @@ pub struct OIDCValidatorConfig {
     pub validator: OIDCValidator,
 }
 
-// impl Default for OIDCValidatorConfig {
-//     fn default() -> Self {
-//         let oidc_issuer = std::env::var("OIDC_ISSUER")
-//             .map_err(|_e| {
-//                 error!("PLEASE set the OIDC_ISSUER ENV var like: https://accounts.google.com")
-//             })
-//             .unwrap();
-//         let created_validator = OIDCValidator::new_from_issuer(oidc_issuer.clone()).await.unwrap();
-//         OIDCValidatorConfig {
-//             issuer: oidc_issuer,
-//             validator: created_validator,
-//         }
-//     }
-// }
-
 /// AuthenticatedUser with your given Claims struct will be extracted data to use in your functions.
 /// The struct may contain registered claims, these are validated according to
 /// [RFC 7519](https://www.rfc-editor.org/rfc/rfc7519.html#section-4.1)
