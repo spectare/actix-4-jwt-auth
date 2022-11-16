@@ -5,6 +5,7 @@
 //! use actix_4_jwt_auth::{AuthenticatedUser, OIDCValidator, OIDCValidatorConfig};
 //! use actix_web::{get, http::header, test, web, App, Error, HttpResponse, HttpServer};
 //! use serde::{Deserialize, Serialize};
+//! use biscuit::ValidationOptions;
 //!
 //! #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 //! pub struct FoundClaims {
