@@ -2,6 +2,7 @@
 use actix_4_jwt_auth::{AuthenticatedUser, OIDCValidator, OIDCValidatorConfig};
 use actix_web::dev::Service;
 use actix_web::{get, http, http::header, test, App, Error};
+use biscuit::ValidationOptions;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -31,7 +32,10 @@ async fn test_jwt_auth_ok() -> Result<(), Error> {
     //Check if spectare/oidc-token-test-service:latest is running on given test_issuer endpoint.
     assert_eq!(common::check_test_idp(test_issuer.clone()).await, Ok(true));
 
-    let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).await.unwrap();
+    let validation_options = ValidationOptions::default();
+    let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone(), validation_options)
+        .await
+        .unwrap();
     let validator_config = OIDCValidatorConfig {
         issuer: test_issuer,
         validator: created_validator,
@@ -95,7 +99,10 @@ async fn test_jwt_auth_expired() -> () {
     //Check if spectare/oidc-token-test-service:latest is running on given test_issuer endpoint.
     assert_eq!(common::check_test_idp(test_issuer.clone()).await, Ok(true));
 
-    let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).await.unwrap();
+    let validation_options = ValidationOptions::default();
+    let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone(), validation_options)
+        .await
+        .unwrap();
     let validator_config = OIDCValidatorConfig {
         issuer: test_issuer,
         validator: created_validator,
@@ -140,8 +147,10 @@ async fn test_jwt_auth_invisible_not_before() -> () {
     //Check if spectare/oidc-token-test-service:latest is running on given test_issuer endpoint.
     assert_eq!(common::check_test_idp(test_issuer.clone()).await, Ok(true));
 
-
-    let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone()).await.unwrap();
+    let validation_options = ValidationOptions::default();
+    let created_validator = OIDCValidator::new_from_issuer(test_issuer.clone(), validation_options)
+        .await
+        .unwrap();
     let validator_config = OIDCValidatorConfig {
         issuer: test_issuer,
         validator: created_validator,
