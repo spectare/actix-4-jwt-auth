@@ -69,6 +69,7 @@ use thiserror::Error;
 mod extractor;
 
 pub use extractor::{AuthenticatedUser, OIDCValidatorConfig};
+use log::info;
 
 /// When a JWT token is received and validated, it may be faulty due to different reasons
 #[derive(Error, Debug)]
@@ -208,14 +209,19 @@ impl OIDCValidator {
         let token: biscuit::jws::Compact<biscuit::ClaimsSet<Value>, Empty> =
             JWT::new_encoded(token);
         let decoded_token = token.decode_with_jwks(&self.jwks, Some(SignatureAlgorithm::RS256))?;
-        //Validate the token based on default settings.
-        decoded_token
-            .validate(self.validation_options.clone())
-            .unwrap();
-        let claims_set = decoded_token.payload().unwrap();
-        let json_value = serde_json::to_value(claims_set).unwrap();
-        let authenticated_user: T = serde_json::from_value(json_value).unwrap();
-        Ok(authenticated_user)
+
+        match decoded_token.validate(self.validation_options.clone()) {
+            Ok(()) => {
+                let claims_set = decoded_token.payload().unwrap();
+                let json_value = serde_json::to_value(claims_set).unwrap();
+                let authenticated_user: T = serde_json::from_value(json_value).unwrap();
+                Ok(authenticated_user)
+            },
+            Err(err)  => {
+                info!("Authorization error: {}", err);
+                Err(OIDCValidationError::Unauthorized)
+            }
+        }
     }
 
     async fn fetch_discovery(uri: &str) -> Result<OIDCDiscoveryDocument, OIDCValidationError> {
