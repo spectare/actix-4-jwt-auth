@@ -23,7 +23,7 @@ actix-web = { version="4.2.1", features=["rustls"]}
 biscuit = "0.6.0-beta1"
 bytes = "1.2.1"
 derive_more = "0.99.17"
-env_logger = "0.9.1"
+env_logger = "0.10.0"
 futures = "0.3.24"
 futures-core = {version = "0.3.24", default-features = false, features = ["alloc"]}
 futures-util = {version = "0.3.24", default-features = false, features = ["alloc"]}
