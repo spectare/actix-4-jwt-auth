@@ -1,20 +1,56 @@
+
 use super::OIDCValidationError;
-use super::OIDCValidator;
-use actix_web::{dev, Error, FromRequest, HttpRequest};
+use super::Oidc;
+use actix_web::{dev::Payload, Error, FromRequest, HttpRequest};
+use biscuit::ClaimsSet;
+use futures::future::LocalBoxFuture;
 use futures_util::future::{ok, ready, Ready};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-///The config may be used to create your OIDCValidator programatically
-/// When you do not add the app_data with your own config, a default will look for an
-/// environment variable named OIDC_ISSUER and use that as base URL to fetch the
-/// openid-configuration.
-#[derive(Clone)]
-pub struct OIDCValidatorConfig {
-    ///URL of the issuer as String
-    pub issuer: String,
-    /// Configured [`OIDCValidator`]
-    pub validator: OIDCValidator,
+
+/// UserClaims with a decorated token will retrieve data for use in your functions
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct UserClaims {
+    /// The complete encoded token (without the Bearer part)
+    pub jwt: String,
+    /// The decoded token in compact representation of a JWS
+    pub decoded_token: biscuit::jws::Compact<ClaimsSet<Value>, biscuit::Empty>,
 }
+
+
+impl FromRequest for UserClaims {
+    type Error = Error;
+    type Future = Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
+        let oidc = req
+            .app_data::<Oidc>()
+            .expect("Please configure the OIDC on your App");
+
+        let authorization = req.headers().get(actix_web::http::header::AUTHORIZATION);
+
+        match authorization {
+            Some(value) => {
+                let value_str = value.to_str().unwrap().to_string();
+                match value_str.strip_prefix("Bearer ") {
+                    Some(token) => match oidc.get_decoded_token(token)  {
+                        Ok(decoded_token) => ok(UserClaims {
+                                jwt: token.to_string(),
+                                decoded_token,
+                        }),
+                        Err(e) => ready(Err(e.into())),
+                    },
+                    _ => ready(Err(OIDCValidationError::BearerNotComplete.into())),
+                }
+            }
+            None => ready(Err(OIDCValidationError::Unauthorized.into())),
+        }
+    }
+}
+
+
+
 
 /// AuthenticatedUser with your given Claims struct will be extracted data to use in your functions.
 /// The struct may contain registered claims, these are validated according to
@@ -29,32 +65,44 @@ pub struct AuthenticatedUser<T> {
     pub claims: T,
 }
 
+
+/// Gets the claims from the access token
+/// This will return a complete claimset that contains all the claims found inside the token
+/// as Serde Json Value.
+fn get_claims<T: for<'de> Deserialize<'de>>(
+    claims_set: &ClaimsSet<Value>
+) -> T
+{
+    let json_value = serde_json::to_value(claims_set).unwrap();
+    let authenticated_user: T = serde_json::from_value(json_value).unwrap();
+    authenticated_user
+}
+
 impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
     type Error = Error;
-    type Future = Ready<Result<Self, Self::Error>>;
+    type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
 
-    fn from_request(req: &HttpRequest, _payload: &mut dev::Payload) -> Self::Future {
-        let cfg = req
-            .app_data::<OIDCValidatorConfig>()
-            .expect("Please configure the OIDCValidatorConfig on your App");
+    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
+        let req_local = req.clone();
+        let mut payload_local = payload.take();
+        Box::pin(async move {
+            let user_claims = UserClaims::from_request(&req_local, &mut payload_local).await?;
 
-        let authorization = req.headers().get(actix_web::http::header::AUTHORIZATION);
-
-        match authorization {
-            Some(value) => {
-                let value_str = value.to_str().unwrap().to_string();
-                match value_str.strip_prefix("Bearer ") {
-                    Some(token) => match cfg.validator.validate_token(token) {
-                        Ok(valid_claims) => ok(AuthenticatedUser {
-                            jwt: token.to_string(),
-                            claims: valid_claims,
-                        }),
-                        Err(e) => ready(Err(e.into())),
-                    },
-                    _ => ready(Err(OIDCValidationError::BearerNotComplete.into())),
+            match user_claims.decoded_token.payload() {
+                Ok(claims_set) => {
+                    let claims = get_claims(claims_set);
+                    Ok(AuthenticatedUser {
+                        jwt: user_claims.jwt.clone(),
+                        claims,
+                    })
+                },
+                Err(_err)  => {
+                    Err(OIDCValidationError::Unauthorized.into())
                 }
             }
-            None => ready(Err(OIDCValidationError::Unauthorized.into())),
-        }
+        }) 
     }
+
+
+
 }

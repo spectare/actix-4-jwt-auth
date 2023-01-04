@@ -1,54 +1,60 @@
-//! Actix 4 JWT Auth is a OIDC based authentication mechanism.
-//!
-//! # Examples
-//! ```no_run
-//! use actix_4_jwt_auth::{AuthenticatedUser, OIDCValidator, OIDCValidatorConfig, biscuit::ValidationOptions};
-//! use actix_web::{get, http::header, test, web, App, Error, HttpResponse, HttpServer};
-//! use serde::{Deserialize, Serialize};
-//!
-//! #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-//! pub struct FoundClaims {
-//!     pub iss: String,
-//!     pub sub: String,
-//!     pub aud: String,
-//!     pub name: String,
-//!     pub email: Option<String>,
-//!     pub email_verified: Option<bool>,
-//! }
-//!     
-//! #[get("/authenticated_user")]
-//! async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
-//!     format!("Welcome {}!", user.claims.name)
-//! }
-//!
-//! #[actix_rt::main]
-//! async fn main() -> std::io::Result<()> {
-//!     let test_issuer = "https://a.valid.openid-connect.idp/".to_string();
-//!     let validation_options = ValidationOptions::default();
-//!     let created_validator = OIDCValidator::new_from_issuer(test_issuer.to_string(), validation_options).await.unwrap();
-//!     let validator_config = OIDCValidatorConfig {
-//!         issuer: test_issuer,
-//!         validator: created_validator,
-//!     };
-//!     
-//!     HttpServer::new(move || {
-//!       App::new()
-//!               .app_data(validator_config.clone())
-//!               .service(authenticated_user)
-//!       })
-//!     .bind("0.0.0.0:8080".to_string())?
-//!     .run()
-//!     .await
-//! }
-//! ```
-//!
-//! Where the new_from_issuer will actually fetch the URL + ./well-known/oidc-configuration in order to find the
-//! location of the published keys.
-//!
-//! # More documentation
-//! In addition to this API documentation, several other resources are available:
-//!
-//! * [Source code and development guidelines](https://github.com/spectare/actix-4-jwt-auth)
+/*!
+Actix 4 JWT Auth is a OIDC based authentication mechanism.
+
+# Examples
+```no_run
+use actix_4_jwt_auth::{AuthenticatedUser, Oidc, OidcBiscuitValidator, biscuit::{ValidationOptions, Validation}};
+use actix_web::{get, http::header, test, web, App, Error, HttpResponse, HttpServer};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct FoundClaims {
+    pub iss: String,
+    pub sub: String,
+    pub aud: String,
+    pub name: String,
+    pub email: Option<String>,
+    pub email_verified: Option<bool>,
+}
+    
+#[get("/authenticated_user")]
+async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
+    format!("Welcome {}!", user.claims.name)
+}
+
+#[actix_rt::main]
+async fn main() -> std::io::Result<()> {
+
+    let authority = "https://a.valid.openid-connect.idp/".to_string();
+
+    let oidc = Oidc::new_from_issuer(authority.clone()).await.unwrap();
+
+    let biscuit_validator = OidcBiscuitValidator { options: ValidationOptions {
+            issuer: Validation::Validate(authority),
+            ..ValidationOptions::default()
+        }
+    };
+    
+    HttpServer::new(move || {
+      App::new()
+              .app_data(oidc.clone())
+              .wrap(biscuit_validator.clone())
+              .service(authenticated_user)
+      })
+    .bind("0.0.0.0:8080".to_string())?
+    .run()
+    .await
+}
+```
+
+Where the new_from_issuer will actually fetch the URL + ./well-known/oidc-configuration in order to find the
+location of the published keys.
+
+# More documentation
+In addition to this API documentation, several other resources are available:
+
+* [Source code and development guidelines](https://github.com/spectare/actix-4-jwt-auth)
+*/
 #![warn(missing_docs)]
 
 use actix_web::http::StatusCode;
@@ -66,11 +72,13 @@ use std::sync::Arc;
 use thiserror::Error;
 
 mod extractor;
+mod middleware;
 
 #[doc(inline)]
 pub use ::biscuit;
 
-pub use extractor::{AuthenticatedUser, OIDCValidatorConfig};
+pub use extractor::{UserClaims, AuthenticatedUser};
+pub use middleware::OidcBiscuitValidator;
 
 /// When a JWT token is received and validated, it may be faulty due to different reasons
 #[derive(Error, Debug)]
@@ -106,6 +114,10 @@ pub enum OIDCValidationError {
     ///Failed to fetch data from given URI
     #[error("Cannot fetch {0:?}")]
     ConnectivityError(SendRequestError),
+
+    ///Token does not have sufficient rights
+    #[error("Token does not have sufficient rights")]
+    IvalidAccess,
 }
 
 impl From<awc::error::HttpError> for OIDCValidationError {
@@ -143,6 +155,7 @@ impl ResponseError for OIDCValidationError {
             OIDCValidationError::FailedToParseJsonResponse(_) => StatusCode::INTERNAL_SERVER_ERROR,
             OIDCValidationError::ConnectivityError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             OIDCValidationError::CryptoError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            OIDCValidationError::IvalidAccess => StatusCode::FORBIDDEN,
         }
     }
 }
@@ -153,76 +166,60 @@ struct OIDCDiscoveryDocument {
     jwks_uri: String,
 }
 
-/// The OIDCValidator contains the core functionality and needs to be available in order to validate JWT
+/// The Oidc contains the core functionality and needs to be available in order to validate JWT
 #[derive(Clone)]
-pub struct OIDCValidator {
+pub struct Oidc {
     //note that keys may expire based on Cache-Control: max-age=21446, must-revalidate header
     /// Contains the JWK Keys that belong to the issuer
     jwks: Arc<JWKSet<Empty>>,
-    validation_options: ValidationOptions,
     //client: Arc<awc::Client>,
 }
 
-impl OIDCValidator {
-    /// Creates a new OIDC Validator based on the base URL of the OIDC Identity Provider (IdP)
+impl Oidc {
+    /// Creates a new Oidc based on the base URL of the Oidc Identity Provider (IdP)
     ///
     /// The given issuer_url will be extended with ./well-known/openid-configuration in order to
     /// fetch the configuration and use the jwks_uri property to retrieve the keys used for validation.actix_rt    
     pub async fn new_from_issuer(
-        issuer_url: String,
-        validation_options: ValidationOptions,
+        issuer_url: String
     ) -> Result<Self, OIDCValidationError> {
-        let discovery_document = OIDCValidator::fetch_discovery(&format!(
+        let discovery_document = Oidc::fetch_discovery(&format!(
             "{}/.well-known/openid-configuration",
             issuer_url.as_str()
         ))
         .await?;
-        OIDCValidator::new_with_keys(discovery_document.jwks_uri, validation_options).await
+        Oidc::new_with_keys(discovery_document.jwks_uri).await
     }
 
     /// When you need the validator created with a specified key URL
     pub async fn new_with_keys(
-        key_url: String,
-        validation_options: ValidationOptions,
+        key_url: String
     ) -> Result<Self, OIDCValidationError> {
-        let jwks = OIDCValidator::fetch_jwks(&key_url).await?;
-        OIDCValidator::new_for_jwks(jwks, validation_options).await
+        let jwks = Oidc::fetch_jwks(&key_url).await?;
+        Oidc::new_for_jwks(jwks).await
     }
 
     /// Use your own JSWKSet directly
     pub async fn new_for_jwks(
-        jwks: JWKSet<Empty>,
-        validation_options: ValidationOptions,
+        jwks: JWKSet<Empty>
     ) -> Result<Self, OIDCValidationError> {
-        Ok(OIDCValidator {
-            jwks: Arc::new(jwks),
-            validation_options,
+        Ok(Oidc {
+            jwks: Arc::new(jwks)
         })
     }
 
-    /// Validates the token. This is the complete String without the Bearer part inside the header.
-    /// This will return a complete validated claimset that contains all the claims found inside the token
-    /// as Serde Json Value.
-    pub fn validate_token<T: for<'de> serde::Deserialize<'de>>(
+    /// Gets the claims from the access token
+    /// This will return a complete decoded token that contains all the claims found inside the token
+    pub fn get_decoded_token(
         &self,
         token: &str,
-    ) -> Result<T, OIDCValidationError> {
+    ) -> Result<jws::Compact<ClaimsSet<Value>, Empty>, OIDCValidationError> {
         let token: biscuit::jws::Compact<biscuit::ClaimsSet<Value>, Empty> =
             JWT::new_encoded(token);
         let decoded_token = token.decode_with_jwks(&self.jwks, Some(SignatureAlgorithm::RS256))?;
+        Ok(decoded_token)
+    }
 
-        match decoded_token.validate(self.validation_options.clone()) {
-            Ok(()) => {
-                let claims_set = decoded_token.payload().unwrap();
-                let json_value = serde_json::to_value(claims_set).unwrap();
-                let authenticated_user: T = serde_json::from_value(json_value).unwrap();
-                Ok(authenticated_user)
-            },
-            Err(_err)  => {
-                Err(OIDCValidationError::Unauthorized)
-    }
-        }
-    }
 
     async fn fetch_discovery(uri: &str) -> Result<OIDCDiscoveryDocument, OIDCValidationError> {
         let client = awc::Client::default();
@@ -254,18 +251,16 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_jwks_url() {
-        let validation_options = ValidationOptions::default();
         let res =
-            OIDCValidator::new_from_issuer(String::from(TEST_ISSUER), validation_options).await;
+            Oidc::new_from_issuer(String::from(TEST_ISSUER)).await;
         assert!(res.is_ok());
         let _validator = res.expect("Cannot retrieve");
     }
 
     #[actix_rt::test]
     async fn test_jwks_url_fail() {
-        let validation_options = ValidationOptions::default();
         let res =
-            OIDCValidator::new_from_issuer(String::from("https://invalid.url"), validation_options)
+            Oidc::new_from_issuer(String::from("https://invalid.url"))
                 .await;
         assert!(res.is_err());
     }
