@@ -5,7 +5,7 @@ In order to make use of this crate, you can add it to your Cargo.toml
 This crate is build with actix-4.
 
 ```
-actix-4-jwt-auth = "0.6.1"
+actix-4-jwt-auth = "0.6.2"
 ```
 
 Or when you like to use the latest as found on github:
