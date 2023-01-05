@@ -40,7 +40,7 @@ You can wire your application like
 ```rust
       let authority = "https://a.valid.openid-connect.idp/".to_string();
 
-      let oidc = Oidc::new_from_issuer(authority.clone()).await.unwrap();
+      let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into())).await.unwrap();
 
       let biscuit_validator = OidcBiscuitValidator { options: ValidationOptions {
               issuer: Validation::Validate(authority),

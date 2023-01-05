@@ -1,5 +1,5 @@
 #[cfg(test)]
-use actix_4_jwt_auth::{AuthenticatedUser, Oidc, OidcBiscuitValidator};
+use actix_4_jwt_auth::{AuthenticatedUser, Oidc, OidcConfig, OidcBiscuitValidator};
 use actix_web::dev::Service;
 use actix_web::{get, http, http::header, test, App, Error};
 use bytes::Bytes;
@@ -26,12 +26,12 @@ async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
 ///Test of the Extractor using
 #[actix_rt::test]
 async fn test_jwt_auth_ok() -> Result<(), Error> {
-    let test_issuer = "http://localhost:8080".to_string();
+    let test_issuer = "http://localhost:8080";
 
     //Check if spectare/oidc-token-test-service:latest is running on given test_issuer endpoint.
-    assert_eq!(common::check_test_idp(test_issuer.clone()).await, Ok(true));
+    assert_eq!(common::check_test_idp(test_issuer.to_owned()).await, Ok(true));
 
-    let oidc = Oidc::new_from_issuer(test_issuer.clone())
+    let oidc = Oidc::new(OidcConfig::Issuer(test_issuer.into()))
         .await
         .unwrap();
 
@@ -42,7 +42,6 @@ async fn test_jwt_auth_ok() -> Result<(), Error> {
             .service(authenticated_user),
     )
     .await;
-    let test_issuer = "http://localhost:8080".to_string();
 
     let claims = json!({
       "iss": "http://0.0.0.0:9090",
@@ -52,7 +51,7 @@ async fn test_jwt_auth_ok() -> Result<(), Error> {
       "email_verified": true,
       "name": "admin"
     });
-    let my_token = common::create_token(&test_issuer, claims)
+    let my_token = common::create_token(test_issuer, claims)
         .await
         .expect("Valid token string from test-token-service");
 
@@ -89,12 +88,12 @@ async fn date_validated_user(user: AuthenticatedUser<DateValidityClaims>) -> Str
 #[actix_rt::test]
 #[should_panic]
 async fn test_jwt_auth_expired() -> () {
-    let test_issuer = "http://localhost:8080".to_string();
+    let test_issuer = "http://localhost:8080";
 
     //Check if spectare/oidc-token-test-service:latest is running on given test_issuer endpoint.
-    assert_eq!(common::check_test_idp(test_issuer.clone()).await, Ok(true));
+    assert_eq!(common::check_test_idp(test_issuer.to_owned()).await, Ok(true));
 
-    let oidc = Oidc::new_from_issuer(test_issuer.clone())
+    let oidc = Oidc::new(OidcConfig::Issuer(test_issuer.into()))
         .await
         .unwrap();
 
@@ -105,7 +104,6 @@ async fn test_jwt_auth_expired() -> () {
             .service(date_validated_user),
     )
     .await;
-    let test_issuer = "http://localhost:8080".to_string();
 
     let claims = json!({
       "iss": "http://0.0.0.0:9090",
@@ -113,7 +111,7 @@ async fn test_jwt_auth_expired() -> () {
       "aud": ["cafienne-ui"],
       "exp": 1602324610, //Saturday 10 October 2020 10:10:10 (e.g Expired)
     });
-    let my_token = common::create_token(&test_issuer, claims)
+    let my_token = common::create_token(test_issuer, claims)
         .await
         .expect("Valid token string from test-token-service");
 
@@ -133,12 +131,12 @@ async fn test_jwt_auth_expired() -> () {
 #[actix_rt::test]
 #[should_panic]
 async fn test_jwt_auth_invisible_not_before() -> () {
-    let test_issuer = "http://localhost:8080".to_string();
+    let test_issuer = "http://localhost:8080";
 
     //Check if spectare/oidc-token-test-service:latest is running on given test_issuer endpoint.
-    assert_eq!(common::check_test_idp(test_issuer.clone()).await, Ok(true));
+    assert_eq!(common::check_test_idp(test_issuer.to_owned()).await, Ok(true));
 
-    let oidc = Oidc::new_from_issuer(test_issuer.clone())
+    let oidc = Oidc::new(OidcConfig::Issuer(test_issuer.into()))
         .await
         .unwrap();
 
@@ -149,7 +147,6 @@ async fn test_jwt_auth_invisible_not_before() -> () {
             .service(date_validated_user),
     )
     .await;
-    let test_issuer = "http://localhost:8080".to_string();
 
     //NOTE that the nbf (Not Before) claim is not valid at this time
     //But is is not explicitly part of the DateValidityClaims and should be validated anyway.

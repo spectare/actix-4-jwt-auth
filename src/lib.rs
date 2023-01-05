@@ -3,7 +3,10 @@ Actix 4 JWT Auth is a OIDC based authentication mechanism.
 
 # Examples
 ```no_run
-use actix_4_jwt_auth::{AuthenticatedUser, Oidc, OidcBiscuitValidator, biscuit::{ValidationOptions, Validation}};
+use actix_4_jwt_auth::{
+    AuthenticatedUser, Oidc, OidcConfig, OidcBiscuitValidator, 
+    biscuit::{ValidationOptions, Validation}
+};
 use actix_web::{get, http::header, test, web, App, Error, HttpResponse, HttpServer};
 use serde::{Deserialize, Serialize};
 
@@ -27,14 +30,14 @@ async fn main() -> std::io::Result<()> {
 
     let authority = "https://a.valid.openid-connect.idp/".to_string();
 
-    let oidc = Oidc::new_from_issuer(authority.clone()).await.unwrap();
+    let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into())).await.unwrap();
 
     let biscuit_validator = OidcBiscuitValidator { options: ValidationOptions {
             issuer: Validation::Validate(authority),
             ..ValidationOptions::default()
         }
     };
-    
+
     HttpServer::new(move || {
       App::new()
               .app_data(oidc.clone())
@@ -67,8 +70,7 @@ use biscuit::*;
 use futures_util::TryFutureExt;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
-use std::format;
-use std::sync::Arc;
+use std::{borrow::Cow, format, sync::Arc};
 use thiserror::Error;
 
 mod extractor;
@@ -166,60 +168,114 @@ struct OIDCDiscoveryDocument {
     jwks_uri: String,
 }
 
+
+trait TraitDecoder {
+    fn decode(
+        &self,
+        jwks: &JWKSet<Empty>,
+        token: &str,
+    ) -> Result<jws::Compact<ClaimsSet<Value>, Empty>, OIDCValidationError>;
+}
+
+#[derive(Clone)]
+struct OidcDecoder;
+
+
+impl TraitDecoder for OidcDecoder {
+    fn decode(
+        &self,
+        jwks: &JWKSet<Empty>,
+        token: &str,
+    ) -> Result<jws::Compact<ClaimsSet<Value>, Empty>, OIDCValidationError> {
+        let token: biscuit::jws::Compact<biscuit::ClaimsSet<Value>, Empty> =
+            JWT::new_encoded(token);
+        let decoded_token = token.decode_with_jwks(jwks, Some(SignatureAlgorithm::RS256))?;
+        Ok(decoded_token)
+    }
+}
+
+
+
 /// The Oidc contains the core functionality and needs to be available in order to validate JWT
 #[derive(Clone)]
 pub struct Oidc {
     //note that keys may expire based on Cache-Control: max-age=21446, must-revalidate header
     /// Contains the JWK Keys that belong to the issuer
     jwks: Arc<JWKSet<Empty>>,
-    //client: Arc<awc::Client>,
+
+    /// Gets the claims from the access token
+    /// This will return a complete decoded token that contains all the claims found inside the token
+    token_decoder: Arc<dyn TraitDecoder + Send + Sync + 'static>
 }
 
+///Oidc configuration
+pub enum OidcConfig{
+    ///issuer
+    Issuer(Cow<'static, str>),
+    ///key url
+    KeyUrl(Cow<'static, str>),
+    ///jwks
+    Jwks(JWKSet<Empty>)
+}
+
+
 impl Oidc {
+
+    /// Creates a new Oidc
+    pub async fn new(
+        config: OidcConfig
+    ) -> Result<Self, OIDCValidationError> {
+        Oidc::new_with_decoder(config, OidcDecoder).await
+    }
+    
+
+    /// Creates a new Oidc with decoder
+    async fn new_with_decoder(
+        config: OidcConfig,
+        decoder: impl TraitDecoder + Send + Sync + 'static
+    ) -> Result<Self, OIDCValidationError> {
+        match config {
+            OidcConfig::Issuer(issuer) => Oidc::new_from_issuer(issuer.as_ref(), decoder).await,
+            OidcConfig::KeyUrl(key_url) => Oidc::new_with_keys(key_url.as_ref(), decoder).await,
+            OidcConfig::Jwks(jwks) => Oidc::new_for_jwks(jwks, decoder).await,
+        }
+    }
+
     /// Creates a new Oidc based on the base URL of the Oidc Identity Provider (IdP)
     ///
     /// The given issuer_url will be extended with ./well-known/openid-configuration in order to
     /// fetch the configuration and use the jwks_uri property to retrieve the keys used for validation.actix_rt    
-    pub async fn new_from_issuer(
-        issuer_url: String
+    async fn new_from_issuer(
+        issuer_url: &str,
+        decoder: impl TraitDecoder + Send + Sync + 'static
     ) -> Result<Self, OIDCValidationError> {
         let discovery_document = Oidc::fetch_discovery(&format!(
             "{}/.well-known/openid-configuration",
-            issuer_url.as_str()
+            issuer_url.clone()
         ))
         .await?;
-        Oidc::new_with_keys(discovery_document.jwks_uri).await
+        Oidc::new_with_keys(&discovery_document.jwks_uri, decoder).await
     }
 
     /// When you need the validator created with a specified key URL
-    pub async fn new_with_keys(
-        key_url: String
+    async fn new_with_keys(
+        key_url: &str,
+        decoder: impl TraitDecoder + Send + Sync + 'static
     ) -> Result<Self, OIDCValidationError> {
-        let jwks = Oidc::fetch_jwks(&key_url).await?;
-        Oidc::new_for_jwks(jwks).await
+        let jwks = Oidc::fetch_jwks(key_url).await?;
+        Oidc::new_for_jwks(jwks, decoder).await
     }
 
     /// Use your own JSWKSet directly
-    pub async fn new_for_jwks(
-        jwks: JWKSet<Empty>
+    async fn new_for_jwks(
+        jwks: JWKSet<Empty>,
+        decoder: impl TraitDecoder + Send + Sync + 'static
     ) -> Result<Self, OIDCValidationError> {
         Ok(Oidc {
-            jwks: Arc::new(jwks)
+            jwks: Arc::new(jwks),
+            token_decoder:  Arc::new(decoder)
         })
     }
-
-    /// Gets the claims from the access token
-    /// This will return a complete decoded token that contains all the claims found inside the token
-    pub fn get_decoded_token(
-        &self,
-        token: &str,
-    ) -> Result<jws::Compact<ClaimsSet<Value>, Empty>, OIDCValidationError> {
-        let token: biscuit::jws::Compact<biscuit::ClaimsSet<Value>, Empty> =
-            JWT::new_encoded(token);
-        let decoded_token = token.decode_with_jwks(&self.jwks, Some(SignatureAlgorithm::RS256))?;
-        Ok(decoded_token)
-    }
-
 
     async fn fetch_discovery(uri: &str) -> Result<OIDCDiscoveryDocument, OIDCValidationError> {
         let client = awc::Client::default();
@@ -247,21 +303,17 @@ impl Oidc {
 mod tests {
     use super::*;
 
-    const TEST_ISSUER: &str = "https://accounts.google.com";
-
     #[actix_rt::test]
     async fn test_jwks_url() {
         let res =
-            Oidc::new_from_issuer(String::from(TEST_ISSUER)).await;
+            Oidc::new(OidcConfig::Issuer("https://accounts.google.com".into())).await;
         assert!(res.is_ok());
-        let _validator = res.expect("Cannot retrieve");
     }
 
     #[actix_rt::test]
     async fn test_jwks_url_fail() {
         let res =
-            Oidc::new_from_issuer(String::from("https://invalid.url"))
-                .await;
+            Oidc::new(OidcConfig::Issuer("https://invalid.url".into())).await;
         assert!(res.is_err());
     }
 }

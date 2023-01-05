@@ -34,7 +34,7 @@ impl FromRequest for UserClaims {
             Some(value) => {
                 let value_str = value.to_str().unwrap().to_string();
                 match value_str.strip_prefix("Bearer ") {
-                    Some(token) => match oidc.get_decoded_token(token)  {
+                    Some(token) => match oidc.token_decoder.decode(&oidc.jwks, token)  {
                         Ok(decoded_token) => ok(UserClaims {
                                 jwt: token.to_string(),
                                 decoded_token,
@@ -65,17 +65,18 @@ pub struct AuthenticatedUser<T> {
     pub claims: T,
 }
 
-
-/// Gets the claims from the access token
-/// This will return a complete claimset that contains all the claims found inside the token
-/// as Serde Json Value.
-fn get_claims<T: for<'de> Deserialize<'de>>(
-    claims_set: &ClaimsSet<Value>
-) -> T
-{
-    let json_value = serde_json::to_value(claims_set).unwrap();
-    let authenticated_user: T = serde_json::from_value(json_value).unwrap();
-    authenticated_user
+impl<T: for<'de> Deserialize<'de>> AuthenticatedUser<T> {
+    /// Gets the claims from the access token
+    /// This will return a complete claimset that contains all the claims found inside the token
+    /// as Serde Json Value.
+    fn get_claims(
+        claims_set: &ClaimsSet<Value>
+    ) -> T
+    {
+        let json_value = serde_json::to_value(claims_set).unwrap();
+        let authenticated_user: T = serde_json::from_value(json_value).unwrap();
+        authenticated_user
+    }
 }
 
 impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
@@ -90,7 +91,7 @@ impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
 
             match user_claims.decoded_token.payload() {
                 Ok(claims_set) => {
-                    let claims = get_claims(claims_set);
+                    let claims = AuthenticatedUser::<T>::get_claims(claims_set);
                     Ok(AuthenticatedUser {
                         jwt: user_claims.jwt.clone(),
                         claims,
