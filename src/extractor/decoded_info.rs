@@ -14,8 +14,8 @@ use crate::{OIDCValidationError, Oidc};
 pub struct DecodedInfo {
     /// The complete encoded token (without the Bearer part)
     pub jwt: String,
-    /// The decoded token in compact representation of a JWS
-    pub decoded_token: biscuit::jws::Compact<ClaimsSet<Value>, biscuit::Empty>,
+    /// The decoded token in ClaimsSet
+    pub payload: ClaimsSet<Value>,
 }
 
 
@@ -35,10 +35,19 @@ impl FromRequest for DecodedInfo {
                 let value_str = value.to_str().unwrap().to_string();
                 match value_str.strip_prefix("Bearer ") {
                     Some(token) => match oidc.token_decoder.decode(&oidc.jwks, token)  {
-                        Ok(decoded_token) => ok(DecodedInfo {
-                                jwt: token.to_string(),
-                                decoded_token,
-                        }),
+                        Ok(decoded_token) => {
+                            match decoded_token.payload() {
+                                Ok(payload) => {
+                                    ok(DecodedInfo {
+                                        jwt: token.to_string(),
+                                        payload: payload.to_owned(),
+                                    })
+                                },
+                                Err(_err)  => {
+                                    ready(Err(OIDCValidationError::Unauthorized.into()))
+                                }
+                            }
+                        },
                         Err(e) => ready(Err(e.into())),
                     },
                     _ => ready(Err(OIDCValidationError::BearerNotComplete.into())),

@@ -5,7 +5,7 @@ use futures::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{DecodedInfo, OIDCValidationError};
+use crate::DecodedInfo;
 
 /// AuthenticatedUser with your given Claims struct will be extracted data to use in your functions.
 /// The struct may contain registered claims, these are validated according to
@@ -42,20 +42,13 @@ impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
         let req_local = req.clone();
         let mut payload_local = payload.take();
         Box::pin(async move {
-            let user_claims = DecodedInfo::from_request(&req_local, &mut payload_local).await?;
+            let decoded_info = DecodedInfo::from_request(&req_local, &mut payload_local).await?;
 
-            match user_claims.decoded_token.payload() {
-                Ok(claims_set) => {
-                    let claims = AuthenticatedUser::<T>::get_claims(claims_set);
-                    Ok(AuthenticatedUser {
-                        jwt: user_claims.jwt.clone(),
-                        claims,
-                    })
-                },
-                Err(_err)  => {
-                    Err(OIDCValidationError::Unauthorized.into())
-                }
-            }
+            let claims = AuthenticatedUser::<T>::get_claims(&decoded_info.payload);
+            Ok(AuthenticatedUser {
+                jwt: decoded_info.jwt.clone(),
+                claims,
+            })
         }) 
     }
 

@@ -60,7 +60,7 @@ where
         Box::pin(async move {
             let user = req.extract::<DecodedInfo>().await?.clone();
 
-            match user.decoded_token.validate(validation_options) {
+            match user.payload.registered.validate(validation_options) {
                 Ok(()) => {
                     let fut = svc.call(req);
                     let res = fut.await?;
