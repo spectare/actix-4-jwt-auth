@@ -1,56 +1,11 @@
 
-use super::OIDCValidationError;
-use super::Oidc;
 use actix_web::{dev::Payload, Error, FromRequest, HttpRequest};
 use biscuit::ClaimsSet;
 use futures::future::LocalBoxFuture;
-use futures_util::future::{ok, ready, Ready};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-
-/// UserClaims with a decorated token will retrieve data for use in your functions
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct UserClaims {
-    /// The complete encoded token (without the Bearer part)
-    pub jwt: String,
-    /// The decoded token in compact representation of a JWS
-    pub decoded_token: biscuit::jws::Compact<ClaimsSet<Value>, biscuit::Empty>,
-}
-
-
-impl FromRequest for UserClaims {
-    type Error = Error;
-    type Future = Ready<Result<Self, Self::Error>>;
-
-    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        let oidc = req
-            .app_data::<Oidc>()
-            .expect("Please configure the OIDC on your App");
-
-        let authorization = req.headers().get(actix_web::http::header::AUTHORIZATION);
-
-        match authorization {
-            Some(value) => {
-                let value_str = value.to_str().unwrap().to_string();
-                match value_str.strip_prefix("Bearer ") {
-                    Some(token) => match oidc.token_decoder.decode(&oidc.jwks, token)  {
-                        Ok(decoded_token) => ok(UserClaims {
-                                jwt: token.to_string(),
-                                decoded_token,
-                        }),
-                        Err(e) => ready(Err(e.into())),
-                    },
-                    _ => ready(Err(OIDCValidationError::BearerNotComplete.into())),
-                }
-            }
-            None => ready(Err(OIDCValidationError::Unauthorized.into())),
-        }
-    }
-}
-
-
-
+use crate::{DecodedInfo, OIDCValidationError};
 
 /// AuthenticatedUser with your given Claims struct will be extracted data to use in your functions.
 /// The struct may contain registered claims, these are validated according to
@@ -87,7 +42,7 @@ impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
         let req_local = req.clone();
         let mut payload_local = payload.take();
         Box::pin(async move {
-            let user_claims = UserClaims::from_request(&req_local, &mut payload_local).await?;
+            let user_claims = DecodedInfo::from_request(&req_local, &mut payload_local).await?;
 
             match user_claims.decoded_token.payload() {
                 Ok(claims_set) => {
@@ -106,4 +61,53 @@ impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
 
 
 
+}
+
+
+#[cfg(test)]
+mod tests {
+    
+    use crate::{AuthenticatedUser, tests::{create_oidc, create_get_jwt_request, create_jwt_token}};
+    use actix_web::{get, test, App, Error};
+    use bytes::Bytes;
+    use serde::{Deserialize, Serialize};
+    
+
+
+    // Create a struct that will deserialize your claims.
+    #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+    pub struct FoundClaims {
+        pub iss: String,
+        pub sub: String,
+        pub aud: Vec<String>,
+        pub name: String,
+        pub email: Option<String>,
+        pub email_verified: Option<bool>,
+    }
+
+    #[get("/authenticated_user")]
+    async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
+        format!("Welcome {}!", user.claims.name)
+    }
+
+    ///Test for getting claims from a token using an extractor
+    #[actix_rt::test]
+    async fn test_extractor_auth_user() -> Result<(), Error> {
+
+        let oidc = create_oidc().await;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(oidc.clone())
+                .service(authenticated_user),
+        )
+        .await;
+
+        let req = create_get_jwt_request("/authenticated_user", &create_jwt_token()).to_request();
+
+        let resp: Bytes = test::call_and_read_body(&app, req).await;
+
+        assert_eq!(resp, Bytes::from_static(b"Welcome admin!"));
+        Ok(())
+    }
 }

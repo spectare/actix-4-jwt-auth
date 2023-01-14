@@ -52,6 +52,7 @@ You can wire your application like
         App::new()
                 .app_data(oidc.clone())
                 .wrap(biscuit_validator.clone())
+                // .wrap(OidcBiscuitValidator::default()) //without issuer verification
                 .service(authenticated_user),
         })
       .bind("0.0.0.0:8080".to_string())?
