@@ -60,21 +60,4 @@ You can wire your application like
       .await
 ```
 
-More documentation is found on [docs.rs](https://docs.rs/actix-4-jwt-auth/0.6.1/actix_4_jwt_auth/)
-
-# Development of this crate
-
-In order to run the integration tests, it is neccesary to run a service that mocks OIDC requests.
-
-```sh
-docker run -p8080:8080 -e BIND=0.0.0.0  spectare/oidc-token-test-service:latest
-```
-
-This service published a keyset with the openid-configuration and allows you to translate _any_ claimset
-into a JWT token to be used in your tests. (So that may be valid, faulty or invalid)
-
-```sh
-cargo test
-```
-
-Thereafter will call the service to test various types of JWT tokens.
+More documentation is found on [docs.rs](https://docs.rs/actix-4-jwt-auth/1.0.0/actix_4_jwt_auth/)
