@@ -79,7 +79,7 @@ mod tests {
     use actix_web::{test, http::header};
     use biscuit::{jwk::{JWKSet, JWK, CommonParameters, AlgorithmParameters, RSAKeyParameters}, Empty, jws::{Secret, RegisteredHeader}, JWT, jwa::{SignatureAlgorithm, Algorithm, self}, ClaimsSet, RegisteredClaims};
     use num::BigUint;
-    use ring::signature::{KeyPair};
+    use ring::signature::KeyPair;
     use serde_json::{Value, json};
 
     use crate::{OidcConfig, Oidc};

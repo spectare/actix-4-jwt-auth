@@ -82,6 +82,11 @@ mod tests {
     async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
         format!("Welcome {}!", user.claims.name)
     }
+    
+    #[get("/no_user")]
+    async fn no_user() -> String {
+        format!("Welcome Anonymous!")
+    }
 
     ///Test for getting claims from a token using an extractor
     #[actix_rt::test]
@@ -92,7 +97,8 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(oidc.clone())
-                .service(authenticated_user),
+                .service(authenticated_user)
+                .service(no_user),
         )
         .await;
 
@@ -101,6 +107,72 @@ mod tests {
         let resp: Bytes = test::call_and_read_body(&app, req).await;
 
         assert_eq!(resp, Bytes::from_static(b"Welcome admin!"));
+        Ok(())
+    }
+    
+    ///Test for calling a method without authentication as there is an extractor 
+    #[actix_rt::test]
+    async fn test_no_user_with_extractor() -> Result<(), Error> {
+
+        let oidc = create_oidc().await;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(oidc.clone())
+                .service(authenticated_user)
+                .service(no_user),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/authenticated_user").to_request();
+
+        let resp: Bytes = test::call_and_read_body(&app, req).await;
+
+        assert_eq!(resp, Bytes::from_static(b"No token found or token is not authorized"));
+        Ok(())
+    }
+    
+    ///Test for calling a method without authentication as there is no extractor 
+    #[actix_rt::test]
+    async fn test_no_extractor() -> Result<(), Error> {
+
+        let oidc = create_oidc().await;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(oidc.clone())
+                .service(authenticated_user)
+                .service(no_user),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/no_user").to_request();
+
+        let resp: Bytes = test::call_and_read_body(&app, req).await;
+
+        assert_eq!(resp, Bytes::from_static(b"Welcome Anonymous!"));
+        Ok(())
+    }
+
+    ///Test for calling a method without authentication as there is no extractor 
+    #[actix_rt::test]
+    async fn test_no_extractor_with_user() -> Result<(), Error> {
+
+        let oidc = create_oidc().await;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(oidc.clone())
+                .service(authenticated_user)
+                .service(no_user),
+        )
+        .await;
+
+        let req = create_get_jwt_request("/no_user", &create_jwt_token()).to_request();
+
+        let resp: Bytes = test::call_and_read_body(&app, req).await;
+
+        assert_eq!(resp, Bytes::from_static(b"Welcome Anonymous!"));
         Ok(())
     }
 }
