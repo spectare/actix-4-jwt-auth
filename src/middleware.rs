@@ -67,7 +67,7 @@ where
                     Ok(res.map_into_left_body())
                 },
                 Err(_err)  => {
-                    let res: actix_web::Error = OIDCValidationError::IvalidAccess.into();
+                    let res: actix_web::Error = OIDCValidationError::InvalidAccess.into();
                     Ok(req.error_response(res).map_into_right_body())
                 }
             }

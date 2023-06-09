@@ -41,7 +41,7 @@ pub enum OIDCValidationError {
 
     ///Token does not have sufficient rights
     #[error("Token does not have sufficient rights")]
-    IvalidAccess,
+    InvalidAccess,
 }
 
 impl From<awc::error::HttpError> for OIDCValidationError {
@@ -79,7 +79,7 @@ impl ResponseError for OIDCValidationError {
             OIDCValidationError::FailedToParseJsonResponse(_) => StatusCode::INTERNAL_SERVER_ERROR,
             OIDCValidationError::ConnectivityError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             OIDCValidationError::CryptoError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            OIDCValidationError::IvalidAccess => StatusCode::FORBIDDEN,
+            OIDCValidationError::InvalidAccess => StatusCode::FORBIDDEN,
         }
     }
 }
