@@ -18,7 +18,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 actix-web = { version="4.2.1", features=["rustls"]}
-biscuit = "0.6.0-beta1"
+biscuit = "0.7.0"
 futures = "0.3.25"
 futures-core = {version = "0.3.25", default-features = false, features = ["alloc"]}
 futures-util = {version = "0.3.25", default-features = false, features = ["alloc"]}
