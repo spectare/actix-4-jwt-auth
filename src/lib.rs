@@ -4,7 +4,7 @@ Actix 4 JWT Auth is a OIDC based authentication mechanism.
 # Examples
 ```no_run
 use actix_4_jwt_auth::{
-    AuthenticatedUser, Oidc, OidcConfig, OidcBiscuitValidator, 
+    AuthenticatedUser, Oidc, OidcConfig, OidcBiscuitValidator,
     biscuit::{ValidationOptions, Validation}
 };
 use actix_web::{get, http::header, test, web, App, Error, HttpResponse, HttpServer};
@@ -19,7 +19,7 @@ pub struct FoundClaims {
     pub email: Option<String>,
     pub email_verified: Option<bool>,
 }
-    
+
 #[get("/authenticated_user")]
 async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
     format!("Welcome {}!", user.claims.name)
@@ -61,30 +61,35 @@ In addition to this API documentation, several other resources are available:
 */
 #![warn(missing_docs)]
 
+mod error;
 mod extractor;
 mod middleware;
-mod error;
 mod oidc;
 
 #[doc(inline)]
 pub use ::biscuit;
 
-pub use extractor::{decoded_info::DecodedInfo, auth_user::AuthenticatedUser};
+pub use error::OIDCValidationError;
+pub use extractor::{auth_user::AuthenticatedUser, decoded_info::DecodedInfo};
 pub use middleware::OidcBiscuitValidator;
 pub use oidc::{Oidc, OidcConfig};
-pub use error::OIDCValidationError;
 
 #[cfg(test)]
 mod tests {
-    use actix_web::{test, http::header};
-    use biscuit::{jwk::{JWKSet, JWK, CommonParameters, AlgorithmParameters, RSAKeyParameters}, Empty, jws::{Secret, RegisteredHeader}, JWT, jwa::{SignatureAlgorithm, Algorithm, self}, ClaimsSet, RegisteredClaims};
+    use actix_web::{http::header, test};
+    use biscuit::{
+        jwa::{self, Algorithm, SignatureAlgorithm},
+        jwk::{AlgorithmParameters, CommonParameters, JWKSet, RSAKeyParameters, JWK},
+        jws::{RegisteredHeader, Secret},
+        ClaimsSet, Empty, RegisteredClaims, JWT,
+    };
     use num::BigUint;
-    use ring::signature::KeyPair;
-    use serde_json::{Value, json};
+    use ring::{rsa::PublicKeyComponents, signature::KeyPair};
+    use serde_json::{json, Value};
 
-    use crate::{OidcConfig, Oidc};
+    use crate::{Oidc, OidcConfig};
 
-    fn get_secret() -> Secret{
+    fn get_secret() -> Secret {
         Secret::rsa_keypair_from_file("private_key.der").unwrap()
     }
 
@@ -92,8 +97,8 @@ mod tests {
         let secret = get_secret();
         let public_key = match secret {
             Secret::RsaKeyPair(ring_pair) => {
-                let s = ring_pair.clone();
-                let pk = s.public_key().clone();
+                let cloned_pair = ring_pair.clone();
+                let pk = PublicKeyComponents::<Vec<_>>::from(cloned_pair.public_key());
                 Some(pk)
             }
             _ => None,
@@ -108,8 +113,8 @@ mod tests {
                     ..Default::default()
                 },
                 algorithm: AlgorithmParameters::RSA(RSAKeyParameters {
-                    n: BigUint::from_bytes_be(public_key.modulus().big_endian_without_leading_zero()),
-                    e: BigUint::from_bytes_be(public_key.exponent().big_endian_without_leading_zero()),
+                    n: BigUint::from_bytes_be(public_key.n.as_slice()),
+                    e: BigUint::from_bytes_be(public_key.e.as_slice()),
                     ..Default::default()
                 }),
                 additional: Default::default(),
@@ -119,11 +124,9 @@ mod tests {
     }
 
     pub(crate) async fn create_oidc() -> Oidc {
-        Oidc::new(OidcConfig::Jwks(create_jwk_set()))
-            .await
-            .unwrap()
+        Oidc::new(OidcConfig::Jwks(create_jwk_set())).await.unwrap()
     }
-    
+
     pub(crate) fn create_token(tokenize: Value) -> String {
         let signing_secret = get_secret();
         let decoded_token = JWT::new_decoded(
@@ -154,13 +157,13 @@ mod tests {
 
     pub(crate) fn create_jwt_token() -> String {
         let claims = json!({
-            "iss": "http://0.0.0.0:9090",
-            "sub": "CgVhZG1pbhIFbG9jYWw",
-            "aud": ["cafienne-ui"],
-            "email": "admin@example.com",
-            "email_verified": true,
-            "name": "admin"
-            });
+        "iss": "http://0.0.0.0:9090",
+        "sub": "CgVhZG1pbhIFbG9jYWw",
+        "aud": ["cafienne-ui"],
+        "email": "admin@example.com",
+        "email_verified": true,
+        "name": "admin"
+        });
         create_token(claims)
     }
 
@@ -171,6 +174,6 @@ mod tests {
             .insert_header((
                 header::AUTHORIZATION,
                 header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
-        ))
+            ))
     }
 }
