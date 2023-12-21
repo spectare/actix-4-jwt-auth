@@ -1,13 +1,12 @@
+use std::str::FromStr;
 
-
-use actix_web::{dev::Payload, Error, FromRequest, HttpRequest};
+use actix_web::{dev::Payload, http::header::HeaderName, Error, FromRequest, HttpRequest};
 use biscuit::ClaimsSet;
 use futures_util::future::{ok, ready, Ready};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{OIDCValidationError, Oidc};
-
 
 /// DecodedInfo with a decorated token will retrieve data for use in your functions
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -18,7 +17,6 @@ pub struct DecodedInfo {
     pub payload: ClaimsSet<Value>,
 }
 
-
 impl FromRequest for DecodedInfo {
     type Error = Error;
     type Future = Ready<Result<Self, Self::Error>>;
@@ -28,42 +26,48 @@ impl FromRequest for DecodedInfo {
             .app_data::<Oidc>()
             .expect("Please configure the OIDC on your App");
 
-        let authorization = req.headers().get(actix_web::http::header::AUTHORIZATION);
-
-        match authorization {
-            Some(value) => {
-                let value_str = value.to_str().unwrap().to_string();
-                match value_str.strip_prefix("Bearer ") {
-                    Some(token) => match oidc.token_decoder.decode(&oidc.jwks, token)  {
-                        Ok(decoded_token) => {
-                            match decoded_token.payload() {
-                                Ok(payload) => {
-                                    ok(DecodedInfo {
-                                        jwt: token.to_string(),
-                                        payload: payload.to_owned(),
-                                    })
-                                },
-                                Err(_err)  => {
-                                    ready(Err(OIDCValidationError::Unauthorized.into()))
-                                }
-                            }
-                        },
-                        Err(e) => ready(Err(e.into())),
-                    },
-                    _ => ready(Err(OIDCValidationError::BearerNotComplete.into())),
+        let authorization = match &oidc.token_lookup {
+            Some(token_lookup) => match token_lookup {
+                crate::oidc::TokenLookup::Header(key) => {
+                    match req.headers().get(HeaderName::from_str(key).unwrap()) {
+                        Some(value) => value.to_str().unwrap().to_string(),
+                        None => return ready(Err(OIDCValidationError::Unauthorized.into())),
+                    }
                 }
-            }
-            None => ready(Err(OIDCValidationError::Unauthorized.into())),
+                crate::oidc::TokenLookup::Cookie(key) => match req.cookie(key) {
+                    Some(value) => value.value().to_string(),
+                    None => return ready(Err(OIDCValidationError::Unauthorized.into())),
+                },
+            },
+            _ => match req.headers().get(actix_web::http::header::AUTHORIZATION) {
+                Some(value) => value.to_str().unwrap().to_string(),
+                None => return ready(Err(OIDCValidationError::Unauthorized.into())),
+            },
+        };
+
+        match authorization.strip_prefix("Bearer ") {
+            Some(token) => match oidc.token_decoder.decode(&oidc.jwks, token) {
+                Ok(decoded_token) => match decoded_token.payload() {
+                    Ok(payload) => ok(DecodedInfo {
+                        jwt: token.to_string(),
+                        payload: payload.to_owned(),
+                    }),
+                    Err(_err) => ready(Err(OIDCValidationError::Unauthorized.into())),
+                },
+                Err(e) => ready(Err(e.into())),
+            },
+            _ => ready(Err(OIDCValidationError::BearerNotComplete.into())),
         }
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
-    use crate::{DecodedInfo, tests::{create_oidc, create_get_jwt_request, create_jwt_token}};
-    use actix_web::{get, test, App, Error, dev::Service, http::StatusCode};
+    use crate::{
+        tests::{create_get_jwt_request, create_jwt_token, create_oidc},
+        DecodedInfo,
+    };
+    use actix_web::{dev::Service, get, http::StatusCode, test, App, Error};
     use bytes::Bytes;
 
     #[get("/decoder")]
@@ -74,15 +78,9 @@ mod tests {
     ///Test for decoder entity extractor
     #[actix_rt::test]
     async fn test_extractor_decoder() -> Result<(), Error> {
-
         let oidc = create_oidc().await;
 
-        let app = test::init_service(
-            App::new()
-                .app_data(oidc.clone())
-                .service(decoder),
-        )
-        .await;
+        let app = test::init_service(App::new().app_data(oidc.clone()).service(decoder)).await;
 
         let token = create_jwt_token();
 
@@ -94,24 +92,18 @@ mod tests {
         Ok(())
     }
 
-        ///Test for decoder entity extractor with bad token
-        #[actix_rt::test]
-        async fn test_extractor_decoder_bad_token() -> Result<(), Error> {
-    
-            let oidc = create_oidc().await;
-    
-            let app = test::init_service(
-                App::new()
-                    .app_data(oidc.clone())
-                    .service(decoder),
-            )
-            .await;
-    
-            let req = create_get_jwt_request("/decoder", "bad_token").to_request();
-    
-            let response = app.call(req).await.unwrap();
-    
-            assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-            Ok(())
-        }
+    ///Test for decoder entity extractor with bad token
+    #[actix_rt::test]
+    async fn test_extractor_decoder_bad_token() -> Result<(), Error> {
+        let oidc = create_oidc().await;
+
+        let app = test::init_service(App::new().app_data(oidc.clone()).service(decoder)).await;
+
+        let req = create_get_jwt_request("/decoder", "bad_token").to_request();
+
+        let response = app.call(req).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        Ok(())
+    }
 }

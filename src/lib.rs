@@ -30,7 +30,7 @@ async fn main() -> std::io::Result<()> {
 
     let authority = "https://a.valid.openid-connect.idp/".to_string();
 
-    let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into())).await.unwrap();
+    let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into()), None).await.unwrap();
 
     let biscuit_validator = OidcBiscuitValidator { options: ValidationOptions {
             issuer: Validation::Validate(authority),
@@ -76,7 +76,7 @@ pub use oidc::{Oidc, OidcConfig};
 
 #[cfg(test)]
 mod tests {
-    use actix_web::{http::header, test};
+    use actix_web::{cookie::Cookie, http::header, test};
     use biscuit::{
         jwa::{self, Algorithm, SignatureAlgorithm},
         jwk::{AlgorithmParameters, CommonParameters, JWKSet, RSAKeyParameters, JWK},
@@ -87,7 +87,7 @@ mod tests {
     use ring::{rsa::PublicKeyComponents, signature::KeyPair};
     use serde_json::{json, Value};
 
-    use crate::{Oidc, OidcConfig};
+    use crate::{oidc::TokenLookup, Oidc, OidcConfig};
 
     fn get_secret() -> Secret {
         Secret::rsa_keypair_from_file("private_key.der").unwrap()
@@ -124,7 +124,15 @@ mod tests {
     }
 
     pub(crate) async fn create_oidc() -> Oidc {
-        Oidc::new(OidcConfig::Jwks(create_jwk_set())).await.unwrap()
+        Oidc::new(OidcConfig::Jwks(create_jwk_set()), None)
+            .await
+            .unwrap()
+    }
+
+    pub(crate) async fn create_oidc_with_token_lookup(token_lookup: TokenLookup) -> Oidc {
+        Oidc::new(OidcConfig::Jwks(create_jwk_set()), Some(token_lookup))
+            .await
+            .unwrap()
     }
 
     pub(crate) fn create_token(tokenize: Value) -> String {
@@ -174,6 +182,32 @@ mod tests {
             .insert_header((
                 header::AUTHORIZATION,
                 header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+            ))
+    }
+
+    pub(crate) fn create_get_jwt_request_custom_header(
+        url: &str,
+        token: &str,
+    ) -> test::TestRequest {
+        test::TestRequest::get()
+            .uri(url)
+            .insert_header(header::ContentType::json())
+            .insert_header((
+                "x-header-token-key",
+                header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+            ))
+    }
+
+    pub(crate) fn create_get_jwt_request_custom_cookie(
+        url: &str,
+        token: &str,
+    ) -> test::TestRequest {
+        test::TestRequest::get()
+            .uri(url)
+            .insert_header(header::ContentType::json())
+            .cookie(Cookie::new(
+                "x-cookie-token-key",
+                &format!("Bearer {}", token),
             ))
     }
 }

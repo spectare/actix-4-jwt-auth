@@ -40,6 +40,10 @@ pub struct Oidc {
     /// Gets the claims from the access token
     /// This will return a complete decoded token that contains all the claims found inside the token
     pub(crate) token_decoder: OidcDecoder,
+
+    /// Use this to override token lookup location
+    /// The default location is Header: Authorization
+    pub(crate) token_lookup: Option<TokenLookup>,
 }
 
 ///Oidc configuration
@@ -52,38 +56,62 @@ pub enum OidcConfig {
     Jwks(JWKSet<Empty>),
 }
 
+// Override token lookup location
+#[derive(Clone)]
+pub enum TokenLookup {
+    Header(Cow<'static, str>),
+    Cookie(Cow<'static, str>),
+}
+
 impl Oidc {
     /// Creates a new Oidc
-    pub async fn new(config: OidcConfig) -> Result<Self, OIDCValidationError> {
+    pub async fn new(
+        config: OidcConfig,
+        token_lookup: Option<TokenLookup>,
+    ) -> Result<Self, OIDCValidationError> {
         match config {
-            OidcConfig::Issuer(issuer) => Oidc::new_from_issuer(issuer.as_ref()).await,
-            OidcConfig::KeyUrl(key_url) => Oidc::new_with_keys(key_url.as_ref()).await,
-            OidcConfig::Jwks(jwks) => Oidc::new_for_jwks(jwks),
+            OidcConfig::Issuer(issuer) => {
+                Oidc::new_from_issuer(issuer.as_ref(), token_lookup).await
+            }
+            OidcConfig::KeyUrl(key_url) => {
+                Oidc::new_with_keys(key_url.as_ref(), token_lookup).await
+            }
+            OidcConfig::Jwks(jwks) => Oidc::new_for_jwks(jwks, token_lookup),
         }
     }
 
     /// Creates a new Oidc based on the base URL of the Oidc Identity Provider (IdP)
     ///
     /// The given issuer_url will be extended with ./well-known/openid-configuration in order to
-    /// fetch the configuration and use the jwks_uri property to retrieve the keys used for validation.actix_rt    
-    async fn new_from_issuer(issuer_url: &str) -> Result<Self, OIDCValidationError> {
+    /// fetch the configuration and use the jwks_uri property to retrieve the keys used for validation.actix_rt
+    async fn new_from_issuer(
+        issuer_url: &str,
+        token_lookup: Option<TokenLookup>,
+    ) -> Result<Self, OIDCValidationError> {
         let discovery_document =
             Oidc::fetch_discovery(&format!("{}/.well-known/openid-configuration", issuer_url))
                 .await?;
-        Oidc::new_with_keys(&discovery_document.jwks_uri).await
+        Oidc::new_with_keys(&discovery_document.jwks_uri, token_lookup).await
     }
 
     /// When you need the validator created with a specified key URL
-    async fn new_with_keys(key_url: &str) -> Result<Self, OIDCValidationError> {
+    async fn new_with_keys(
+        key_url: &str,
+        token_lookup: Option<TokenLookup>,
+    ) -> Result<Self, OIDCValidationError> {
         let jwks = Oidc::fetch_jwks(key_url).await?;
-        Oidc::new_for_jwks(jwks)
+        Oidc::new_for_jwks(jwks, token_lookup)
     }
 
     /// Use your own JSWKSet directly
-    fn new_for_jwks(jwks: JWKSet<Empty>) -> Result<Self, OIDCValidationError> {
+    fn new_for_jwks(
+        jwks: JWKSet<Empty>,
+        token_lookup: Option<TokenLookup>,
+    ) -> Result<Self, OIDCValidationError> {
         Ok(Oidc {
             jwks: Arc::new(jwks),
             token_decoder: OidcDecoder,
+            token_lookup,
         })
     }
 
@@ -95,7 +123,7 @@ impl Oidc {
             .await
             .map(|mut res| {
                 res.json::<OIDCDiscoveryDocument>()
-                    .map_err(|err| OIDCValidationError::FailedToParseJsonResponse(err))
+                    .map_err(OIDCValidationError::FailedToParseJsonResponse)
             })?
             .await
     }
@@ -115,13 +143,17 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_jwks_url() {
-        let res = Oidc::new(OidcConfig::Issuer("https://accounts.google.com".into())).await;
+        let res = Oidc::new(
+            OidcConfig::Issuer("https://accounts.google.com".into()),
+            None,
+        )
+        .await;
         assert!(res.is_ok());
     }
 
     #[actix_rt::test]
     async fn test_jwks_url_fail() {
-        let res = Oidc::new(OidcConfig::Issuer("https://invalid.url".into())).await;
+        let res = Oidc::new(OidcConfig::Issuer("https://invalid.url".into()), None).await;
         assert!(res.is_err());
     }
 }
