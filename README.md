@@ -60,16 +60,23 @@ You can wire your application like
       .await
 ```
 
-This will find the token from `Authorization` header value.
-You can override the token lookup location (custom header or cookie) by passing `TokenLookup` enum as the second parameter at
+This will find the token from `Authorization` header value if you pass `None` as the second parameter.
+
+You can override the token lookup location (custom header or cookie) by importing `TokenLookup` enum
 ```rust
-use crate::{Oidc, OidcConfig, TokenLookup};
+use actix_4_jwt_auth::{Oidc, OidcConfig, TokenLookup};
 ```
+If you want you use custom header:
 ```rust
-let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into()), Some(TokenLookup::Header("x-custom-auth-header".into()))).await.unwrap();
+let token_lookup = TokenLookup::Header("x-custom-auth-header".into());
 ```
+or use custom cookie:
 ```rust
-let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into()), Some(TokenLookup::Cookie("x-custom-auth-cookie".into()))).await.unwrap();
+let token_lookup = TokenLookup::Cookie("x-custom-auth-cookie".into());
+```
+and pass `Some(token_lookup)` at
+```rust
+let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into()), Some(token_lookup)).await.unwrap();
 ```
 
 More documentation is found on [docs.rs](https://docs.rs/actix-4-jwt-auth/1.0.0/actix_4_jwt_auth/)
