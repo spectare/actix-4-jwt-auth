@@ -6,7 +6,7 @@ use futures_util::future::{ok, ready, Ready};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{OIDCValidationError, Oidc};
+use crate::{OIDCValidationError, Oidc, TokenLookup};
 
 /// DecodedInfo with a decorated token will retrieve data for use in your functions
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -28,13 +28,13 @@ impl FromRequest for DecodedInfo {
 
         let authorization = match &oidc.token_lookup {
             Some(token_lookup) => match token_lookup {
-                crate::oidc::TokenLookup::Header(key) => {
+                TokenLookup::Header(key) => {
                     match req.headers().get(HeaderName::from_str(key).unwrap()) {
                         Some(value) => value.to_str().unwrap().to_string(),
                         None => return ready(Err(OIDCValidationError::Unauthorized.into())),
                     }
                 }
-                crate::oidc::TokenLookup::Cookie(key) => match req.cookie(key) {
+                TokenLookup::Cookie(key) => match req.cookie(key) {
                     Some(value) => value.value().to_string(),
                     None => return ready(Err(OIDCValidationError::Unauthorized.into())),
                 },

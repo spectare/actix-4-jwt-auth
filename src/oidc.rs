@@ -42,7 +42,7 @@ pub struct Oidc {
     pub(crate) token_decoder: OidcDecoder,
 
     /// Use this to override token lookup location
-    /// The default location is Header: Authorization
+    /// The default location is Header: Authorization if this is set to None
     pub(crate) token_lookup: Option<TokenLookup>,
 }
 
@@ -56,10 +56,12 @@ pub enum OidcConfig {
     Jwks(JWKSet<Empty>),
 }
 
-// Override token lookup location
+/// Override token lookup location
 #[derive(Clone)]
 pub enum TokenLookup {
+    /// Get access token from a custom header key
     Header(Cow<'static, str>),
+    /// Get access token from a custom cookie key
     Cookie(Cow<'static, str>),
 }
 

@@ -72,7 +72,7 @@ pub use ::biscuit;
 pub use error::OIDCValidationError;
 pub use extractor::{auth_user::AuthenticatedUser, decoded_info::DecodedInfo};
 pub use middleware::OidcBiscuitValidator;
-pub use oidc::{Oidc, OidcConfig};
+pub use oidc::{Oidc, OidcConfig, TokenLookup};
 
 #[cfg(test)]
 mod tests {
@@ -87,7 +87,7 @@ mod tests {
     use ring::{rsa::PublicKeyComponents, signature::KeyPair};
     use serde_json::{json, Value};
 
-    use crate::{oidc::TokenLookup, Oidc, OidcConfig};
+    use crate::{Oidc, OidcConfig, TokenLookup};
 
     fn get_secret() -> Secret {
         Secret::rsa_keypair_from_file("private_key.der").unwrap()
