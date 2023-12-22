@@ -40,7 +40,7 @@ You can wire your application like
 ```rust
       let authority = "https://a.valid.openid-connect.idp/".to_string();
 
-      let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into()), None).await.unwrap();
+      let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into())).await.unwrap();
 
       let biscuit_validator = OidcBiscuitValidator { options: ValidationOptions {
               issuer: Validation::Validate(authority),
@@ -76,7 +76,7 @@ let token_lookup = TokenLookup::Cookie("x-custom-auth-cookie".into());
 ```
 and pass `Some(token_lookup)` at
 ```rust
-let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into()), Some(token_lookup)).await.unwrap();
+let oidc = Oidc::new_with_token_lookup(OidcConfig::Issuer(authority.clone().into()), token_lookup).await.unwrap();
 ```
 
 More documentation is found on [docs.rs](https://docs.rs/actix-4-jwt-auth/1.0.0/actix_4_jwt_auth/)

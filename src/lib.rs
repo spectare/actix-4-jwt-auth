@@ -30,7 +30,7 @@ async fn main() -> std::io::Result<()> {
 
     let authority = "https://a.valid.openid-connect.idp/".to_string();
 
-    let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into()), None).await.unwrap();
+    let oidc = Oidc::new(OidcConfig::Issuer(authority.clone().into())).await.unwrap();
 
     let biscuit_validator = OidcBiscuitValidator { options: ValidationOptions {
             issuer: Validation::Validate(authority),
@@ -124,13 +124,11 @@ mod tests {
     }
 
     pub(crate) async fn create_oidc() -> Oidc {
-        Oidc::new(OidcConfig::Jwks(create_jwk_set()), None)
-            .await
-            .unwrap()
+        Oidc::new(OidcConfig::Jwks(create_jwk_set())).await.unwrap()
     }
 
     pub(crate) async fn create_oidc_with_token_lookup(token_lookup: TokenLookup) -> Oidc {
-        Oidc::new(OidcConfig::Jwks(create_jwk_set()), Some(token_lookup))
+        Oidc::new_with_token_lookup(OidcConfig::Jwks(create_jwk_set()), token_lookup)
             .await
             .unwrap()
     }

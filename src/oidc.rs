@@ -67,18 +67,27 @@ pub enum TokenLookup {
 
 impl Oidc {
     /// Creates a new Oidc
-    pub async fn new(
+    pub async fn new(config: OidcConfig) -> Result<Self, OIDCValidationError> {
+        match config {
+            OidcConfig::Issuer(issuer) => Oidc::new_from_issuer(issuer.as_ref(), None).await,
+            OidcConfig::KeyUrl(key_url) => Oidc::new_with_keys(key_url.as_ref(), None).await,
+            OidcConfig::Jwks(jwks) => Oidc::new_for_jwks(jwks, None),
+        }
+    }
+
+    /// Creates a new Oidc with custom token lookup
+    pub async fn new_with_token_lookup(
         config: OidcConfig,
-        token_lookup: Option<TokenLookup>,
+        token_lookup: TokenLookup,
     ) -> Result<Self, OIDCValidationError> {
         match config {
             OidcConfig::Issuer(issuer) => {
-                Oidc::new_from_issuer(issuer.as_ref(), token_lookup).await
+                Oidc::new_from_issuer(issuer.as_ref(), Some(token_lookup)).await
             }
             OidcConfig::KeyUrl(key_url) => {
-                Oidc::new_with_keys(key_url.as_ref(), token_lookup).await
+                Oidc::new_with_keys(key_url.as_ref(), Some(token_lookup)).await
             }
-            OidcConfig::Jwks(jwks) => Oidc::new_for_jwks(jwks, token_lookup),
+            OidcConfig::Jwks(jwks) => Oidc::new_for_jwks(jwks, Some(token_lookup)),
         }
     }
 
@@ -145,17 +154,13 @@ mod tests {
 
     #[actix_rt::test]
     async fn test_jwks_url() {
-        let res = Oidc::new(
-            OidcConfig::Issuer("https://accounts.google.com".into()),
-            None,
-        )
-        .await;
+        let res = Oidc::new(OidcConfig::Issuer("https://accounts.google.com".into())).await;
         assert!(res.is_ok());
     }
 
     #[actix_rt::test]
     async fn test_jwks_url_fail() {
-        let res = Oidc::new(OidcConfig::Issuer("https://invalid.url".into()), None).await;
+        let res = Oidc::new(OidcConfig::Issuer("https://invalid.url".into())).await;
         assert!(res.is_err());
     }
 }
