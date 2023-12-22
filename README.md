@@ -74,7 +74,7 @@ or use custom cookie:
 ```rust
 let token_lookup = TokenLookup::Cookie("x-custom-auth-cookie".into());
 ```
-and pass `Some(token_lookup)` at
+and pass `token_lookup` as `Oidc::new_with_token_lookup`'s second parameter
 ```rust
 let oidc = Oidc::new_with_token_lookup(OidcConfig::Issuer(authority.clone().into()), token_lookup).await.unwrap();
 ```
