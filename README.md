@@ -60,7 +60,7 @@ You can wire your application like
       .await
 ```
 
-This will find the token from `Authorization` header value if you pass `None` as the second parameter.
+This will find the token from `Authorization` header value if you use `Oidc::new`
 
 You can override the token lookup location (custom header or cookie) by importing `TokenLookup` enum
 ```rust
