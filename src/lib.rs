@@ -203,9 +203,6 @@ mod tests {
         test::TestRequest::get()
             .uri(url)
             .insert_header(header::ContentType::json())
-            .cookie(Cookie::new(
-                "x-cookie-token-key",
-                &format!("Bearer {}", token),
-            ))
+            .cookie(Cookie::new("x-cookie-token-key", token))
     }
 }

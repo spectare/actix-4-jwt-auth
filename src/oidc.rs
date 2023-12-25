@@ -42,8 +42,8 @@ pub struct Oidc {
     pub(crate) token_decoder: OidcDecoder,
 
     /// Use this to override token lookup location
-    /// The default location is Header: Authorization if this is set to None
-    pub(crate) token_lookup: Option<TokenLookup>,
+    /// The default location is Header: Authorization
+    pub(crate) token_lookup: TokenLookup,
 }
 
 ///Oidc configuration
@@ -68,11 +68,11 @@ pub enum TokenLookup {
 impl Oidc {
     /// Creates a new Oidc
     pub async fn new(config: OidcConfig) -> Result<Self, OIDCValidationError> {
-        match config {
-            OidcConfig::Issuer(issuer) => Oidc::new_from_issuer(issuer.as_ref(), None).await,
-            OidcConfig::KeyUrl(key_url) => Oidc::new_with_keys(key_url.as_ref(), None).await,
-            OidcConfig::Jwks(jwks) => Oidc::new_for_jwks(jwks, None),
-        }
+        Self::new_with_token_lookup(
+            config,
+            TokenLookup::Header(actix_web::http::header::AUTHORIZATION.as_str().into()),
+        )
+        .await
     }
 
     /// Creates a new Oidc with custom token lookup
@@ -82,12 +82,12 @@ impl Oidc {
     ) -> Result<Self, OIDCValidationError> {
         match config {
             OidcConfig::Issuer(issuer) => {
-                Oidc::new_from_issuer(issuer.as_ref(), Some(token_lookup)).await
+                Oidc::new_from_issuer(issuer.as_ref(), token_lookup).await
             }
             OidcConfig::KeyUrl(key_url) => {
-                Oidc::new_with_keys(key_url.as_ref(), Some(token_lookup)).await
+                Oidc::new_with_keys(key_url.as_ref(), token_lookup).await
             }
-            OidcConfig::Jwks(jwks) => Oidc::new_for_jwks(jwks, Some(token_lookup)),
+            OidcConfig::Jwks(jwks) => Oidc::new_for_jwks(jwks, token_lookup),
         }
     }
 
@@ -97,7 +97,7 @@ impl Oidc {
     /// fetch the configuration and use the jwks_uri property to retrieve the keys used for validation.actix_rt
     async fn new_from_issuer(
         issuer_url: &str,
-        token_lookup: Option<TokenLookup>,
+        token_lookup: TokenLookup,
     ) -> Result<Self, OIDCValidationError> {
         let discovery_document =
             Oidc::fetch_discovery(&format!("{}/.well-known/openid-configuration", issuer_url))
@@ -108,7 +108,7 @@ impl Oidc {
     /// When you need the validator created with a specified key URL
     async fn new_with_keys(
         key_url: &str,
-        token_lookup: Option<TokenLookup>,
+        token_lookup: TokenLookup,
     ) -> Result<Self, OIDCValidationError> {
         let jwks = Oidc::fetch_jwks(key_url).await?;
         Oidc::new_for_jwks(jwks, token_lookup)
@@ -117,7 +117,7 @@ impl Oidc {
     /// Use your own JSWKSet directly
     fn new_for_jwks(
         jwks: JWKSet<Empty>,
-        token_lookup: Option<TokenLookup>,
+        token_lookup: TokenLookup,
     ) -> Result<Self, OIDCValidationError> {
         Ok(Oidc {
             jwks: Arc::new(jwks),

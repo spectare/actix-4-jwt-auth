@@ -26,26 +26,26 @@ impl FromRequest for DecodedInfo {
             .app_data::<Oidc>()
             .expect("Please configure the OIDC on your App");
 
+        let prefix;
+
         let authorization = match &oidc.token_lookup {
-            Some(token_lookup) => match token_lookup {
-                TokenLookup::Header(key) => {
-                    match req.headers().get(HeaderName::from_str(key).unwrap()) {
-                        Some(value) => value.to_str().unwrap().to_string(),
-                        None => return ready(Err(OIDCValidationError::Unauthorized.into())),
-                    }
+            TokenLookup::Header(key) => {
+                prefix = "Bearer ";
+                match req.headers().get(HeaderName::from_str(key).unwrap()) {
+                    Some(value) => value.to_str().unwrap().to_string(),
+                    None => return ready(Err(OIDCValidationError::Unauthorized.into())),
                 }
-                TokenLookup::Cookie(key) => match req.cookie(key) {
+            }
+            TokenLookup::Cookie(key) => {
+                prefix = "";
+                match req.cookie(key) {
                     Some(value) => value.value().to_string(),
                     None => return ready(Err(OIDCValidationError::Unauthorized.into())),
-                },
-            },
-            _ => match req.headers().get(actix_web::http::header::AUTHORIZATION) {
-                Some(value) => value.to_str().unwrap().to_string(),
-                None => return ready(Err(OIDCValidationError::Unauthorized.into())),
-            },
+                }
+            }
         };
 
-        match authorization.strip_prefix("Bearer ") {
+        match authorization.strip_prefix(prefix) {
             Some(token) => match oidc.token_decoder.decode(&oidc.jwks, token) {
                 Ok(decoded_token) => match decoded_token.payload() {
                     Ok(payload) => ok(DecodedInfo {
