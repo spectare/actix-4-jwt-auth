@@ -72,11 +72,11 @@ pub use ::biscuit;
 pub use error::OIDCValidationError;
 pub use extractor::{auth_user::AuthenticatedUser, decoded_info::DecodedInfo};
 pub use middleware::OidcBiscuitValidator;
-pub use oidc::{Oidc, OidcConfig};
+pub use oidc::{Oidc, OidcConfig, TokenLookup};
 
 #[cfg(test)]
 mod tests {
-    use actix_web::{http::header, test};
+    use actix_web::{cookie::Cookie, http::header, test};
     use biscuit::{
         jwa::{self, Algorithm, SignatureAlgorithm},
         jwk::{AlgorithmParameters, CommonParameters, JWKSet, RSAKeyParameters, JWK},
@@ -87,7 +87,7 @@ mod tests {
     use ring::{rsa::PublicKeyComponents, signature::KeyPair};
     use serde_json::{json, Value};
 
-    use crate::{Oidc, OidcConfig};
+    use crate::{Oidc, OidcConfig, TokenLookup};
 
     fn get_secret() -> Secret {
         Secret::rsa_keypair_from_file("private_key.der").unwrap()
@@ -125,6 +125,12 @@ mod tests {
 
     pub(crate) async fn create_oidc() -> Oidc {
         Oidc::new(OidcConfig::Jwks(create_jwk_set())).await.unwrap()
+    }
+
+    pub(crate) async fn create_oidc_with_token_lookup(token_lookup: TokenLookup) -> Oidc {
+        Oidc::new_with_token_lookup(OidcConfig::Jwks(create_jwk_set()), token_lookup)
+            .await
+            .unwrap()
     }
 
     pub(crate) fn create_token(tokenize: Value) -> String {
@@ -175,5 +181,28 @@ mod tests {
                 header::AUTHORIZATION,
                 header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
             ))
+    }
+
+    pub(crate) fn create_get_jwt_request_custom_header(
+        url: &str,
+        token: &str,
+    ) -> test::TestRequest {
+        test::TestRequest::get()
+            .uri(url)
+            .insert_header(header::ContentType::json())
+            .insert_header((
+                "x-header-token-key",
+                header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+            ))
+    }
+
+    pub(crate) fn create_get_jwt_request_custom_cookie(
+        url: &str,
+        token: &str,
+    ) -> test::TestRequest {
+        test::TestRequest::get()
+            .uri(url)
+            .insert_header(header::ContentType::json())
+            .cookie(Cookie::new("x-cookie-token-key", token))
     }
 }
