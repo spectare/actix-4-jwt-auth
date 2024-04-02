@@ -2,7 +2,7 @@ version: 2.1
 jobs:
   build:
     docker:
-      - image: cimg/rust:1.73.0
+      - image: cimg/rust:1.77.0
     environment:
       # Set your codecov token if your repository is private.
       CODECOV_TOKEN: "CHANGE_TO_VALID_TOKEN"
