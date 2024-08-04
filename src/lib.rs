@@ -83,6 +83,7 @@ mod tests {
         jws::{RegisteredHeader, Secret},
         ClaimsSet, Empty, RegisteredClaims, JWT,
     };
+    use bytes::Bytes;
     use num::BigUint;
     use ring::{rsa::PublicKeyComponents, signature::KeyPair};
     use serde_json::{json, Value};
@@ -181,6 +182,17 @@ mod tests {
                 header::AUTHORIZATION,
                 header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
             ))
+    }
+
+    pub(crate) fn create_post_jwt_request(url: &str, token: &str, payload: impl Into<Bytes>) -> test::TestRequest {
+        test::TestRequest::post()
+            .uri(url)
+            .insert_header(header::ContentType::json())
+            .insert_header((
+                header::AUTHORIZATION,
+                header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+            ))
+            .set_payload(payload)
     }
 
     pub(crate) fn create_get_jwt_request_custom_header(

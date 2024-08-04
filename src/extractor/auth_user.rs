@@ -38,9 +38,9 @@ impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self, Self::Error>>;
 
-    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
+    fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let req_local = req.clone();
-        let mut payload_local = payload.take();
+        let mut payload_local = Payload::None;
         Box::pin(async move {
             let decoded_info = DecodedInfo::from_request(&req_local, &mut payload_local).await?;
 
@@ -60,8 +60,8 @@ impl<T: for<'de> Deserialize<'de>> FromRequest for AuthenticatedUser<T> {
 #[cfg(test)]
 mod tests {
     
-    use crate::{AuthenticatedUser, tests::{create_oidc, create_get_jwt_request, create_jwt_token}};
-    use actix_web::{get, test, App, Error};
+    use crate::{tests::{create_get_jwt_request, create_jwt_token, create_oidc, create_post_jwt_request}, AuthenticatedUser};
+    use actix_web::{get, post, test, web::Json, App, Error};
     use bytes::Bytes;
     use serde::{Deserialize, Serialize};
     
@@ -78,8 +78,17 @@ mod tests {
         pub email_verified: Option<bool>,
     }
 
+    #[derive(Serialize, Deserialize)]
+    pub struct SomePayload {
+    }
+
     #[get("/authenticated_user")]
     async fn authenticated_user(user: AuthenticatedUser<FoundClaims>) -> String {
+        format!("Welcome {}!", user.claims.name)
+    }
+
+    #[post("/authenticated_user")]
+    async fn authenticated_user_post(user: AuthenticatedUser<FoundClaims>, _: Json<SomePayload>) -> String {
         format!("Welcome {}!", user.claims.name)
     }
     
@@ -110,6 +119,28 @@ mod tests {
         Ok(())
     }
     
+    ///Test for getting claims from a token using an extractor in a post request with JSON payload
+    #[actix_rt::test]
+    async fn test_extractor_auth_user_should_not_break_payload() -> Result<(), Error> {
+
+        let oidc = create_oidc().await;
+
+        let app = test::init_service(
+            App::new()
+                .app_data(oidc.clone())
+                .service(authenticated_user_post)
+                .service(no_user),
+        )
+        .await;
+
+        let req = create_post_jwt_request("/authenticated_user", &create_jwt_token(), "{}".as_bytes()).to_request();
+
+        let resp: Bytes = test::call_and_read_body(&app, req).await;
+
+        assert_eq!(resp, Bytes::from_static(b"Welcome admin!"));
+        Ok(())
+    }
+
     ///Test for calling a method without authentication as there is an extractor 
     #[actix_rt::test]
     async fn test_no_user_with_extractor() -> Result<(), Error> {
