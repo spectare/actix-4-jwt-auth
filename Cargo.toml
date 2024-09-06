@@ -17,13 +17,13 @@ version = "1.2.4"
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-actix-web = { version="4.8.0", features=["rustls"]}
+actix-web = { version="4.9.0", features=["rustls"]}
 biscuit = "0.7.0"
 #biscuit = { path = "../biscuit/" }
 futures = "0.3.30"
 futures-core = {version = "0.3.30", default-features = false, features = ["alloc"]}
 futures-util = {version = "0.3.30", default-features = false, features = ["alloc"]}
-awc = { version="3.5.0", features=["rustls"] }
+awc = { version="3.5.1", features=["rustls"] }
 serde = {version = "1", features = ["derive"]}
 serde_derive = "1"
 serde_json = "1"
